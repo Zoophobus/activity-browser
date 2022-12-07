@@ -2,6 +2,8 @@
 from PySide2 import QtWidgets, QtCore
 from PySide2.QtCore import Slot
 
+import brightway2 as bw
+
 from ...settings import project_settings
 from ...signals import signals
 from ..icons import qicons
@@ -67,7 +69,9 @@ class DatabasesTable(ABDataFrameView):
         proxy = self.indexAt(event.pos())
         if proxy.isValid():
             db_name = self.model.get_db_name(proxy)
-            self.relink_action.setEnabled(not project_settings.db_is_readonly(db_name))
+            db_check = bw.Database(db_name)
+            relinkable = True if not project_settings.db_is_readonly(db_name) and db_check.find_dependents() else False
+            self.relink_action.setEnabled(relinkable)
             self.new_activity_action.setEnabled(not project_settings.db_is_readonly(db_name))
         menu.exec_(event.globalPos())
 

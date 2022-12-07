@@ -94,19 +94,21 @@ def rename_db_bw2package(data: dict, old: str, new: str) -> dict:
     return new_data
 
 
-def relink_exchanges_existing_db(db: bw.Database, old: str, other: bw.Database) -> None:
+def relink_exchanges_existing_db(db: bw.Database, old: str, other: bw.Database) -> tuple:
     """Relink exchanges after the database has been created/written.
 
     This means possibly doing a lot of sqlite update calls.
     """
     if old == other.name:
         print("No point relinking to same database.")
-        return
+        return ()
     assert db.backend == "sqlite", "Relinking only allowed for SQLITE backends"
     assert other.backend == "sqlite", "Relinking only allowed for SQLITE backends"
 
     duplicates, candidates = {}, {}
     altered = 0
+    remainder = 0
+    unlinked_exchanges = dict()
 
     for ds in other:
         key = activity_hash(ds, DEFAULT_FIELDS)
@@ -129,6 +131,10 @@ def relink_exchanges_existing_db(db: bw.Database, old: str, other: bw.Database) 
                 elif key in candidates:
                     exc["input"] = candidates[key]
                     altered += 1
+                else:
+                    remainder += 1
+                    if len(unlinked_exchanges) <= 5:
+                        unlinked_exchanges[exc.input] = key
                 exc.save()
                 if i % 10000 == 0:
                     # Commit changes every 10k exchanges.
@@ -144,6 +150,7 @@ def relink_exchanges_existing_db(db: bw.Database, old: str, other: bw.Database) 
             db.name, altered, old, other.name
         )
     )
+    return (remainder, altered, unlinked_exchanges)
 
 
 def alter_database_name(data: list, old: str, new: str) -> list:

@@ -268,10 +268,47 @@ class DatabaseLinkingDialog(QtWidgets.QDialog):
 
     @classmethod
     def relink_excel(cls, options: List[Tuple[str, List[str]]],
-                     parent=None) -> 'DatabaseLinkingDialog':
+                     parent: QtWidgets.QWidget = None) -> 'DatabaseLinkingDialog':
         label = "Customize database links for exchanges in the imported database."
         return cls.construct_dialog(label, options, parent)
 
+class DatabaseLinkingResultsDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Relinking database results")
+
+        button = QtWidgets.QDialogButtonBox.Ok
+        self.buttonBox = QtWidgets.QDialogButtonBox(button)
+        self.buttonBox.accepted.connect(self.accept)
+        self.databases_relinked = QtWidgets.QVBoxLayout()
+
+        self.exchangesButtonBox = QtWidgets.QVBoxLayout()
+
+        self.layout = QtWidgets.QVBoxLayout()
+        self.layout.addLayout(self.databases_relinked)
+        self.layout.addWidget(self.buttonBox)
+        self.setLayout(self.layout)
+
+    @classmethod
+    def construct_results_dialog(cls, parent: QtWidgets.QWidget = None, link_results: dict = None, unlinked_exchanges: dict = None) -> 'DatabaseLinkingResultsDialog':
+        obj = cls(parent)
+        for k, results in link_results.items():
+            obj.databases_relinked.addWidget(QtWidgets.QLabel(f"{k} = {results[1]} successfully linked"))
+            obj.databases_relinked.addWidget(QtWidgets.QLabel(f"{k} = {results[0]} flows failed to link"))
+
+        obj.exchangesButtonBox.addWidget(QtWidgets.QLabel("Up to 5 unlinked exchanges (click to open)"))
+        for act, key in unlinked_exchanges.items():
+            button = QtWidgets.QPushButton(act)
+            button.clicked.connect(lambda x=key: signals.safe_open_activity_tab.emit(x))
+            obj.exchangesButtonBox.addWidget(button)
+        obj.updateGeometry()
+
+        return obj
+
+    @classmethod
+    def present_relinking_results(cls, parent: QtWidgets.QWidget = None, link_results: dict = None, unlinked_exchanges : dict = None) -> 'DatabaseLinkingResultsDialog':
+        return cls.construct_results_dialog(parent, link_results, unlinked_exchanges)
 
 class DefaultBiosphereDialog(QtWidgets.QProgressDialog):
     def __init__(self, parent=None):
