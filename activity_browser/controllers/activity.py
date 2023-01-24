@@ -8,9 +8,11 @@ from PySide2.QtCore import QObject, Slot
 from PySide2 import QtWidgets
 
 from activity_browser.bwutils import AB_metadata, commontasks as bc
+from activity_browser.bwutils.strategies import relink_activity_exchanges
 from activity_browser.settings import project_settings
 from activity_browser.signals import signals
 from activity_browser.ui.wizards import UncertaintyWizard
+from ..ui.widgets import ActivityLinkingDialog, ActivityLinkingResultsDialog
 from .parameter import ParameterController
 
 
@@ -28,6 +30,7 @@ class ActivityController(QObject):
         signals.duplicate_to_db_interface_multiple.connect(self.show_duplicate_to_db_interface)
         signals.activity_modified.connect(self.modify_activity)
         signals.duplicate_activity_to_db.connect(self.duplicate_activity_to_db)
+        signals.relink_activity.connect(self.relink_activity_exchange)
 
     @Slot(str, name="createNewActivity")
     def new_activity(self, database_name: str) -> None:
@@ -52,9 +55,9 @@ class ActivityController(QObject):
             production_exchange.save()
             bw.databases.set_modified(database_name)
             AB_metadata.update_metadata(new_act.key)
-            signals.open_activity_tab.emit(new_act.key)
             signals.database_changed.emit(database_name)
             signals.databases_changed.emit()
+            signals.unsafe_open_activity_tab.emit(new_act.key)
 
     @Slot(tuple, name="deleteActivity")
     @Slot(list, name="deleteActivities")
@@ -62,12 +65,18 @@ class ActivityController(QObject):
         """Use the given data to delete one or more activities from brightway2."""
         activities = self._retrieve_activities(data)
 
+        text = ("One or more activities have downstream processes. "
+                "Deleting these activities will remove the exchange from the downstream processes, this can't be undone.\n\n"
+                "Are you sure you want to continue?")
+
         if any(len(act.upstream()) > 0 for act in activities):
-            text = ("Can't delete one or more activities. Some upstream process"
-                    " consumes their reference products. Please edit or delete "
-                    "these upstream exchanges first.")
-            QtWidgets.QMessageBox.warning(self.window, "Not possible.", text)
-            return
+            choice = QtWidgets.QMessageBox.warning(self.window,
+                                                   "Activity/Activities has/have downstream processes",
+                                                   text,
+                                                   QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                                                   QtWidgets.QMessageBox.No)
+            if choice == QtWidgets.QMessageBox.No:
+                return
 
         # Iterate through the activities and:
         # - Close any open activity tabs,
@@ -123,7 +132,7 @@ class ActivityController(QObject):
                     product['input'] = new_act.key
             new_act.save()
             AB_metadata.update_metadata(new_act.key)
-            signals.open_activity_tab.emit(new_act.key)
+            signals.safe_open_activity_tab.emit(new_act.key)
 
         db = next(iter(activities)).get("database")
         bw.databases.set_modified(db)
@@ -159,7 +168,7 @@ class ActivityController(QObject):
             signals.database_changed.emit(target_db)
             signals.databases_changed.emit()
             for key in new_keys:
-                signals.open_activity_tab.emit(key)
+                signals.safe_open_activity_tab.emit(key)
 
     @Slot(str, object, name="copyActivityToDb")
     def duplicate_activity_to_db(self, target_db: str, activity: Activity):
@@ -170,7 +179,7 @@ class ActivityController(QObject):
         bw.databases.set_modified(target_db)
         signals.database_changed.emit(target_db)
         signals.databases_changed.emit()
-        signals.open_activity_tab.emit(new_key)
+        signals.safe_open_activity_tab.emit(new_key)
 
     @staticmethod
     def _copy_activity(target: str, act: Activity) -> tuple:
@@ -198,6 +207,26 @@ class ActivityController(QObject):
         return [bw.get_activity(data)] if isinstance(data, tuple) else [
             bw.get_activity(k) for k in data
         ]
+
+    @Slot(tuple, name="relinkActivityExchanges")
+    def relink_activity_exchange(self, key: tuple) -> None:
+        db = bw.Database(key[0])
+        actvty = db.get(key[1])
+        depends = db.find_dependents()
+        options = [(depend, bw.databases.list) for depend in depends]
+        dialog = ActivityLinkingDialog.relink_sqlite(actvty['name'], options, self.window)
+        relinking_results = {}
+        if dialog.exec_() == ActivityLinkingDialog.Accepted:
+            for old, new in dialog.relink.items():
+                other = bw.Database(new)
+                failed, succeeded, examples = relink_activity_exchanges(actvty, old, other)
+                relinking_results[f"{old} --> {other.name}"] = (failed, succeeded)
+            if failed > 0:
+                relinking_dialog = ActivityLinkingResultsDialog.present_relinking_results(self.window, relinking_results, examples)
+                relinking_dialog.exec_()
+                activity = relinking_dialog.open_activity()
+            signals.database_changed.emit(actvty['name'])
+            signals.databases_changed.emit()
 
 
 class ExchangeController(QObject):

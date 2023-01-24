@@ -39,7 +39,6 @@ class BaseExchangeTable(ABDataFrameView):
         self.copy_exchanges_for_SDF_action = QtWidgets.QAction(
             qicons.superstructure, "Exchanges for scenario difference file", None
         )
-
         self.key = getattr(parent, "key", None)
         self.model = self.MODEL(self.key, self)
         self.downstream = False
@@ -63,6 +62,7 @@ class BaseExchangeTable(ABDataFrameView):
         )
         self.model.updated.connect(self.update_proxy_model)
         self.model.updated.connect(self.custom_view_sizing)
+
 
     @Slot(name="resizeView")
     def custom_view_sizing(self) -> None:
@@ -173,6 +173,7 @@ class TechnosphereExchangeTable(BaseExchangeTable):
         """
         cols = self.model.columns
         self.setColumnHidden(cols.index("Comment"), not show)
+        super().custom_view_sizing()
 
     def contextMenuEvent(self, event) -> None:
         if self.indexAt(event.pos()).row() == -1:
@@ -234,6 +235,7 @@ class BiosphereExchangeTable(BaseExchangeTable):
         """
         cols = self.model.columns
         self.setColumnHidden(cols.index("Comment"), not show)
+        super().custom_view_sizing()
 
     def contextMenuEvent(self, event) -> None:
         if self.indexAt(event.pos()).row() == -1:

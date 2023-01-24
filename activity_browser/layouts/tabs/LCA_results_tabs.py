@@ -7,18 +7,19 @@ import string
 import traceback
 from collections import namedtuple
 from typing import List, Optional, Union
+import pandas as pd
 
 from PySide2.QtWidgets import (
     QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QRadioButton,
     QLabel, QLineEdit, QCheckBox, QPushButton, QComboBox, QTableView,
     QButtonGroup, QMessageBox, QGroupBox, QGridLayout, QFileDialog,
-    QApplication
+    QApplication, QSizePolicy
 )
 from PySide2 import QtGui, QtCore
 from stats_arrays.errors import InvalidParamsError
 
 from ...bwutils import (
-    Contributions, MonteCarloLCA, MLCA, PresamplesMLCA,
+    Contributions, MonteCarloLCA, MLCA,
     SuperstructureMLCA, GlobalSensitivityAnalysis,
     commontasks as bc,
     calculations,
@@ -89,7 +90,7 @@ class LCAResultsSubTab(QTabWidget):
         self.data = data
         self.cs_name = self.data.get('cs_name')
         self.has_scenarios = False if data.get('calculation_type') == 'simple' else True
-        self.mlca: Optional[Union[MLCA, PresamplesMLCA, SuperstructureMLCA]] = None
+        self.mlca: Optional[Union[MLCA, SuperstructureMLCA]] = None
         self.contributions: Optional[Contributions] = None
         self.mc: Optional[MonteCarloLCA] = None
         self.method_dict = dict()
@@ -147,7 +148,7 @@ class LCAResultsSubTab(QTabWidget):
 
     @QtCore.Slot(int, name="updateUnderlyingMatrices")
     def update_scenario_data(self, index: int) -> None:
-        """Will calculate which presamples array to use and update all child tabs."""
+        """Will calculate which scenario array to use and update all child tabs."""
         if index == self.mlca.current:
             return
         self.mlca.set_scenario(index)
@@ -280,7 +281,7 @@ class NewAnalysisTab(QWidget):
         self.update_tab()
 
     def get_scenario_labels(self) -> List[str]:
-        """Get scenario labels if presamples is used."""
+        """Get scenario labels if scenarios are used."""
         return self.parent.mlca.scenario_names if self.has_scenarios else []
 
     def configure_scenario(self):
@@ -395,13 +396,15 @@ class InventoryTab(NewAnalysisTab):
         self.df_biosphere = None
         self.df_technosphere = None
 
-        self.layout.addLayout(get_header_layout('Inventory'))
 
+        self.layout.addLayout(get_header_layout('Inventory'))
+        self.bio_tech_button_group = QButtonGroup()
+        self.bio_categorisation_factor_group = QComboBox()
         # buttons
         button_layout = QHBoxLayout()
         self.radio_button_biosphere = QRadioButton("Biosphere flows")
         self.radio_button_biosphere.setChecked(True)
-        button_layout.addWidget(self.radio_button_biosphere)
+
         self.radio_button_technosphere = QRadioButton("Technosphere flows")
         self.remove_zeros_checkbox = QCheckBox("Remove '0' values")
 
@@ -416,12 +419,35 @@ class InventoryTab(NewAnalysisTab):
         self.uncharacterised_checkbox.setToolTip("Show the flows which do not have characterisation factors in Impact Categories.\n")
 
         self.remove_zero_state = False
+
+        self.categorisation_factor_filters = ["No filtering with categorisation factors",\
+                                                "Flows without categorisation factors", \
+                                                "Flows with categorisation factors"]
+        self.categorisation_factor_state = None
+        self.old_categorisation_factor_state = self.categorisation_factor_state
+
         self.last_remove_zero_state = self.remove_zero_state
         self.remove_zeros_checkbox.setChecked(self.remove_zero_state)
         self.remove_zeros_checkbox.setToolTip("Choose whether to show '0' values or not.\n"
                                               "When selected, '0' values are not shown.\n"
                                               "Rows are only removed when all reference flows are '0'.")
         self.scenario_label = QLabel("Scenario:")
+
+        # Group the radio buttons into the appropriate groups for the window
+        self.update_combobox(self.bio_categorisation_factor_group, self.categorisation_factor_filters)
+        self.bio_categorisation_factor_group.setMaximumWidth(300)
+        self.bio_categorisation_factor_group.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
+
+        # Setup the Qt environment for the buttons, including the arrangement
+        self.categorisation_filter_layout = QVBoxLayout()
+        self.categorisation_filter_layout.addWidget(QLabel("Filter flows:"))
+        self.categorisation_filter_layout.addWidget(self.bio_categorisation_factor_group)
+        self.categorisation_filter_box = QWidget()
+        self.categorisation_filter_box.setLayout(self.categorisation_filter_layout)
+        self.categorisation_filter_box.setVisible(True)
+        self.categorisation_filter_with_flows = None
+
+        button_layout.addWidget(self.radio_button_biosphere)
         button_layout.addWidget(self.radio_button_technosphere)
         button_layout.addWidget(self.scenario_label)
         button_layout.addWidget(self.scenario_box)
@@ -430,7 +456,7 @@ class InventoryTab(NewAnalysisTab):
         button_layout.addWidget(self.uncharacterised_checkbox)
         button_layout.addWidget(self.remove_zeros_checkbox)
         self.layout.addLayout(button_layout)
-
+        self.layout.addWidget(self.categorisation_filter_box)
         # table
         self.table = InventoryTable(self.parent)
         self.table.table_name = 'Inventory_' + self.parent.cs_name
@@ -446,11 +472,35 @@ class InventoryTab(NewAnalysisTab):
         self.remove_zeros_checkbox.toggled.connect(self.remove_zeros_checked)
         self.characterised_checkbox.toggled.connect(self.characterised_flows_checked)
         self.uncharacterised_checkbox.toggled.connect(self.uncharacterised_flows_checked)
+        self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
+        self.bio_categorisation_factor_group.activated.connect(self.add_categorisation_factor_filter)
         if self.has_scenarios:
             self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
             self.parent.update_scenario_box_index.connect(
                 lambda index: self.set_combobox_index(self.scenario_box, index)
             )
+
+    @QtCore.Slot(QRadioButton, name="addCategorisationFactorFilter")
+    def add_categorisation_factor_filter(self, index: int):
+        if self.bio_categorisation_factor_group.currentText() ==  "Flows without categorisation factors":
+            self.categorisation_filter_with_flows = False
+            self.categorisation_factor_state = False
+        elif self.bio_categorisation_factor_group.currentText() == "Flows with categorisation factors":
+            self.categorisation_filter_with_flows = True
+            self.categorisation_factor_state = True
+        else:
+            self.categorisation_filter_with_flows = None
+            self.categorisation_factor_state = None
+        self.update_table()
+        self.old_categorisation_factor_state = self.categorisation_factor_state
+
+    @QtCore.Slot(QRadioButton, name="toggleCategorisationFactorFilterButtons")
+    def toggle_categorisation_factor_filter_buttons(self, bttn: QRadioButton):
+        if bttn.text() == "Biosphere flows":
+            self.categorisation_filter_box.setVisible(True)
+        else:
+            self.categorisation_filter_box.setVisible(False)
+            self.categorisation_factor_state = None
 
     @QtCore.Slot(bool, name="isRemoveZerosToggled")
     def remove_zeros_checked(self, toggled: bool):
@@ -500,22 +550,45 @@ class InventoryTab(NewAnalysisTab):
         self.clear_tables()
         super().update_tab()
 
+    def elementary_flows_contributing_to_IA_methods(self, contributary: bool = True, bios: pd.DataFrame = None) -> pd.DataFrame:
+        """Returns a biosphere dataframe filtered for the presence in the impact assessment methods
+        Requires a boolean argument for whether those flows included in the impact assessment method
+        should be returned (True), or not (False)
+        """
+        incl_flows = {self.parent.contributions.inventory_data['biosphere'][1][k] for mthd in self.parent.mlca.method_matrices for k in mthd.indices}
+        data = bios if bios is not None else self.df_biosphere
+        if contributary:
+            flows = incl_flows
+        else:
+            flows = (set(self.parent.contributions.inventory_data['biosphere'][1].values())).difference(incl_flows)
+        new_flows = [flow[1] for flow in flows]
+
+        return data.loc[data['code'].isin(new_flows)]
+
+
     def update_table(self):
         """Update the table."""
         inventory = "biosphere" if self.radio_button_biosphere.isChecked() else "technosphere"
+        self.table.showing = inventory
         # We handle both 'df_biosphere' and 'df_technosphere' variables here.
         attr_name = "df_{}".format(inventory)
-        # TODO: Getting Inventory results
-        if getattr(self, attr_name) is None or self.remove_zero_state != self.last_remove_zero_state:
+
+        if getattr(self, attr_name) is None or self.remove_zero_state != self.last_remove_zero_state \
+                or self.old_categorisation_factor_state != self.categorisation_factor_state:
             setattr(self, attr_name, self.parent.contributions.inventory_df(
                 inventory_type=inventory)
                     )
-
+        #TODO: BOKEH import from git merge
         #TODO: write util in bwutil to fetch all the cfs for the selected ICs and Union the set
         #TODO: Intersection the union and df_bio in self.parent.contributions.inventory_df
         # for method in self.parent.mlca.methods:
         #     methods = bw.Method(self.parent.mlca.methods[0]).load())
 
+        # filter the biosphere flows for the relevance to the CFs
+        if self.categorisation_filter_with_flows is not None and inventory == "biosphere":
+            self.df_biosphere = self.elementary_flows_contributing_to_IA_methods(self.categorisation_filter_with_flows, self.df_biosphere)
+
+        # filter the flows to remove those that have relevant exchanges
         def filter_zeroes(df):
             filter_on = [x for x in df.columns.tolist() if '|' in x]
             return df[df[filter_on].sum(axis=1) != 0].reset_index(drop=True)
@@ -524,12 +597,16 @@ class InventoryTab(NewAnalysisTab):
             self.df_biosphere = filter_zeroes(self.df_biosphere)
         if self.remove_zero_state and getattr(self, 'df_technosphere') is not None:
             self.df_technosphere = filter_zeroes(self.df_technosphere)
-        super().update_table(getattr(self, attr_name))
+
+        self._update_table(getattr(self, attr_name))
 
     def clear_tables(self) -> None:
         """Set the biosphere and technosphere to None."""
         self.df_biosphere, self.df_technosphere = None, None
 
+    def _update_table(self, table: pd.DataFrame, drop: str = 'code'):
+        """Update the table."""
+        self.table.model.sync((table.drop(drop, axis=1)).reset_index(drop=True))
 
 class LCAResultsTab(NewAnalysisTab):
     """Class for the 'LCA Results' sub-tab.
@@ -638,7 +715,7 @@ class LCAScoresTab(NewAnalysisTab):
         self.combobox.currentIndexChanged.connect(self.update_plot)
 
     def build_export(self, has_table: bool = True, has_plot: bool = True) -> QHBoxLayout:
-        """Add 3d excel export if presamples- or scenario-type LCA is performed."""
+        """Add 3d excel export if scenario-type LCA is performed."""
         layout = super().build_export(has_table, has_plot)
         if self.has_scenarios:
             # Remove the last QSpacerItem from the layout,
@@ -702,7 +779,7 @@ class LCIAResultsTab(NewAnalysisTab):
         self.layout.addLayout(self.build_export(True, True))
 
     def build_export(self, has_table: bool = True, has_plot: bool = True) -> QHBoxLayout:
-        """Add 3d excel export if presamples- or scenario-type LCA is performed."""
+        """Add 3d excel export if scenario-type LCA is performed."""
         layout = super().build_export(has_table, has_plot)
         if self.has_scenarios:
             # Remove the last QSpacerItem from the layout,
@@ -895,13 +972,6 @@ class ContributionTab(NewAnalysisTab):
         self.combobox_menu.method.currentIndexChanged.connect(self.update_tab)
         self.combobox_menu.func.currentIndexChanged.connect(self.update_tab)
         self.combobox_menu.agg.currentIndexChanged.connect(self.update_tab)
-
-        # Add wiring for presamples scenarios
-        if self.has_scenarios:
-            self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
-            self.parent.update_scenario_box_index.connect(
-                lambda index: self.set_combobox_index(self.scenario_box, index)
-            )
 
     def update_tab(self):
         """Update the tab."""

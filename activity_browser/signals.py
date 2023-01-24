@@ -42,6 +42,8 @@ class Signals(QObject):
     duplicate_activity_to_db = Signal(str, object)
     duplicate_to_db_interface = Signal(tuple, str)
     duplicate_to_db_interface_multiple = Signal(list, str)
+    safe_open_activity_tab = Signal(tuple)
+    unsafe_open_activity_tab = Signal(tuple)
     open_activity_tab = Signal(tuple)
     close_activity_tab = Signal(tuple)
     open_activity_graph_tab = Signal(tuple)
@@ -51,6 +53,8 @@ class Signals(QObject):
     # Activity editing
     edit_activity = Signal(str)  # db_name
     activity_modified = Signal(tuple, str, object)
+    relink_activity = Signal(tuple)
+
 
     # Exchanges
     exchanges_deleted = Signal(list)
@@ -80,11 +84,6 @@ class Signals(QObject):
     parameter_scenario_sync = Signal(int, object, bool)
     parameter_superstructure_built = Signal(int, object)
     clear_activity_parameter = Signal(str, str, str)
-
-    # Presamples
-    presample_package_created = Signal(str)
-    presample_package_delete = Signal(str)
-    presample_package_removed = Signal()
 
     # Calculation Setups
     new_calculation_setup = Signal()

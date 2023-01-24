@@ -6,7 +6,7 @@ from typing import List, Union
 import openpyxl
 import pandas as pd
 
-from .utils import SUPERSTRUCTURE
+from .utils import SUPERSTRUCTURE, _time_it_
 
 
 def convert_tuple_str(x):
@@ -23,7 +23,7 @@ def get_sheet_names(document_path: Union[str, Path]) -> List[str]:
     except UnicodeDecodeError as e:
         print("Given document uses an unknown encoding: {}".format(e))
 
-
+@_time_it_
 def get_header_index(document_path: Union[str, Path], import_sheet: int):
     """Retrieves the line index for the column headers, will raise an
     exception if not found in the first 10 rows.
@@ -34,11 +34,14 @@ def get_header_index(document_path: Union[str, Path], import_sheet: int):
         for i in range(10):
             value = sheet.cell(i + 1, 1).value
             if isinstance(value, str) and value.startswith("from activity name"):
+                wb.close()
                 return i
     except IndexError as e:
+        wb.close()
         raise IndexError("Expected headers not found in file").with_traceback(e.__traceback__)
     except UnicodeDecodeError as e:
         print("Given document uses an unknown encoding: {}".format(e))
+        wb.close()
     raise ValueError("Could not find required headers in given document sheet.")
 
 
@@ -46,8 +49,8 @@ def valid_cols(name: str) -> bool:
     """Callable which evaluates if a specific column should be used."""
     return False if name.startswith("#") else True
 
-
-def import_from_excel(document_path: Union[str, Path], import_sheet: int = 1):
+@_time_it_
+def import_from_excel(document_path: Union[str, Path], import_sheet: int = 1) -> pd.DataFrame:
     """Import all of the exchanges and their scenario amounts from a given
     document and sheet index.
 
@@ -56,7 +59,7 @@ def import_from_excel(document_path: Union[str, Path], import_sheet: int = 1):
 
     Any '*' character used at the start of a row or will cause that row
     to be excluded from the import.
-    A '#' charater at the start of a column will cause that column to be
+    A '#' character at the start of a column will cause that column to be
     excluded from the import.
 
     'usecols' is used to exclude specific columns from the excel document.
@@ -69,12 +72,6 @@ def import_from_excel(document_path: Union[str, Path], import_sheet: int = 1):
         engine="openpyxl"
     )
     diff = SUPERSTRUCTURE.difference(data.columns)
-    # 'flow type' is not yet a required column
-    if "flow type" in diff:
-        print("Missing the 'flow type' column, ignoring for now.")
-        diff = diff.drop(["flow type"])
-        cols = data.columns.append(pd.Index(["flow type"]))
-        data = data.reindex(cols, axis="columns")
     if not diff.empty:
         raise ValueError("Missing required column(s) for superstructure: {}".format(diff.to_list()))
 

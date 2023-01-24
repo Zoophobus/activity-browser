@@ -5,8 +5,10 @@ from .comparison_switch import SwitchComboBox
 from .cutoff_menu import CutoffMenu
 from .database_copy import CopyDatabaseDialog
 from .dialog import (
-    ForceInputDialog, TupleNameDialog, ExcelReadDialog, ChoiceSelectionDialog,
-    DatabaseLinkingDialog, DefaultBiosphereDialog
+    ForceInputDialog, TupleNameDialog, ExcelReadDialog,
+    DatabaseLinkingDialog, DefaultBiosphereDialog,
+    DatabaseLinkingResultsDialog, ActivityLinkingDialog,
+    ActivityLinkingResultsDialog, ProjectDeletionDialog
 )
 from .line_edit import (SignalledPlainTextEdit, SignalledComboEdit,
                         SignalledLineEdit)

@@ -23,6 +23,7 @@ if QSysInfo.productType() == "osx" and (
     print("Warning! The currently used version of Qt cannot properly handle BigSur yet.")
 
 
+
 def run_activity_browser():
     qapp = QApplication(sys.argv)
     # qapp.setFont(default_font)
