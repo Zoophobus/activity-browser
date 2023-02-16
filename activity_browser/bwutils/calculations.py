@@ -6,7 +6,6 @@ from ..bwutils import (
 
 from bw2calc.errors import BW2CalcError
 
-
 def do_LCA_calculations(data: dict):
     """Perform the MLCA calculation."""
     cs_name = data.get('cs_name', 'new calculation')

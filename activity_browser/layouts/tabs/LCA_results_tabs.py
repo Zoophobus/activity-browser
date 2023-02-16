@@ -24,6 +24,7 @@ from ...bwutils import (
     commontasks as bc,
     calculations,
 )
+from ...bwutils.superstructure import _time_it_
 from ...signals import signals
 from ...ui.figures import (
     CorrelationPlot, LCAResultsBarChart, MonteCarloPlot, ContributionPlot, LCAResultsOverview
@@ -85,6 +86,7 @@ class LCAResultsSubTab(QTabWidget):
 
     update_scenario_box_index = QtCore.Signal(int)
 
+    @_time_it_
     def __init__(self, data: dict, parent=None):
         super().__init__(parent)
         self.data = data
@@ -738,6 +740,7 @@ class LCAScoresTab(NewAnalysisTab):
         self.update_combobox(self.combobox, [str(m) for m in self.parent.mlca.methods])
         super().update_tab()
 
+    @_time_it_
     @QtCore.Slot(int, name="updatePlotWithIndex")
     def update_plot(self, method_index: int = 0):
         """Update the plot."""
@@ -801,6 +804,7 @@ class LCIAResultsTab(NewAnalysisTab):
         self.df = self.parent.contributions.lca_scores_df(normalized=self.relative)
         super().update_tab()
 
+    @_time_it_
     def update_plot(self):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)
@@ -987,6 +991,7 @@ class ContributionTab(NewAnalysisTab):
     def update_table(self):
         super().update_table(self.df)
 
+    @_time_it_
     def update_plot(self):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)

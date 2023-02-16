@@ -226,7 +226,7 @@ class LCAResultsBarChart(BokehPlot):
             x_max = 0
 
         lca_results_plot = bokeh_figure(title=(', '.join([m for m in method])), y_range=list(df.index),
-                                        plot_height=BokehPlotUtils.calculate_results_chart_height(
+                                        height=BokehPlotUtils.calculate_results_chart_height(
                                             bar_count=df.index.size,
                                             legend_item_count=df.columns.size),
                                         x_range=(x_min, x_max), tools=['hover'],
@@ -329,7 +329,7 @@ class LCAResultsOverview(BokehPlot):
             min = dfp.min().min()
 
         lca_results_plot = bokeh_figure(y_range=list(dfp.index), x_range=(min, 1),
-                                        plot_height=plot_height, sizing_mode="stretch_width", toolbar_location=None)
+                                        height=plot_height, sizing_mode="stretch_width", toolbar_location=None)
 
         bar_distribution_value, bar_height = get_sub_bar_placement(dfp.columns.size)
 
@@ -403,34 +403,44 @@ class ContributionPlot(BokehPlot):
         # Handle negative values
         has_negative_values = (self.plot_data.values < 0).any()
         has_positive_values = (self.plot_data.values > 0).any()
-        positive_df = self.plot_data.copy()
-        if has_negative_values:
-            negative_df = self.plot_data[self.plot_data < 0]
-            negative_df = negative_df.fillna(0)
-            positive_df = self.plot_data[self.plot_data > 0]
-            positive_df = positive_df.fillna(0)
+#        positive_df = self.plot_data.copy()
+#        if has_negative_values:
+#            negative_df = self.plot_data[self.plot_data < 0]
+#            negative_df = negative_df.fillna(0)
+#            positive_df = self.plot_data[self.plot_data > 0]
+#            positive_df = positive_df.fillna(0)
 
-        # Compute plot height
+        # Compute plot height # TODO this calculation seems wrong, it produced 296 pixels for a plot height
         plot_height = BokehPlotUtils.calculate_bar_chart_height(bar_count=self.plot_data.index.size,
                                                                 legend_item_count=self.plot_data.columns.size)
 
-        # Prepare the plot and add stacked bars
-        contribution_plot = bokeh_figure(y_range=list(self.plot_data.index), toolbar_location=None,
-                                         plot_height=plot_height,
-                                         sizing_mode="stretch_width")
-
+#        # Prepare the plot and add stacked bars
+#        contribution_plot = bokeh_figure(y_range=list(self.plot_data.index), toolbar_location=None,
+#                                         height=plot_height,
+#                                         sizing_mode="stretch_width")
+#
         if has_positive_values:
-            contribution_plot.hbar_stack(list(positive_df.columns), height=self.BAR_HEIGHT, y='index',
-                                         source=ColumnDataSource(positive_df),
-                                         legend_label=list(positive_df.columns),
-                                         fill_color=BokehPlotUtils.get_color_palette(len(positive_df.columns)),
+            positive = ColumnDataSource(self.plot_data)
+            contribution_plot = bokeh_figure(y_range=positive.data['index'].tolist(), toolbar_location=None,
+                                             height=plot_height,
+                                             sizing_mode="stretch_width")
+
+            contribution_plot.hbar_stack(stackers=positive.column_names[1:], height=self.BAR_HEIGHT, y='index',
+                                         source=positive,
+                                         legend_label=positive.column_names[1:],
+                                         fill_color=BokehPlotUtils.get_color_palette(len(positive.column_names)-1),
                                          line_width=0)
 
         if has_negative_values:
-            contribution_plot.hbar_stack(list(negative_df.columns), height=self.BAR_HEIGHT, y='index',
-                                         source=ColumnDataSource(negative_df),
-                                         legend_label=list(negative_df.columns),
-                                         fill_color=BokehPlotUtils.get_color_palette(len(negative_df.columns), True),
+            negative = ColumnDataSource(self.plot_data)
+            contribution_plot = bokeh_figure(y_range=negative.data['index'].tolist(), toolbar_location=None,
+                                             height=plot_height,
+                                             sizing_mode="stretch_width")
+
+            contribution_plot.hbar_stack(stackers=negative.column_names[1:], height=self.BAR_HEIGHT, y='index',
+                                         source=negative,
+                                         legend_label=negative.column_names[1:],
+                                         fill_color=BokehPlotUtils.get_color_palette(len(negative.column_names)-1, True),
                                          line_width=0)
             source_totals = ColumnDataSource(
                 data=dict(base=list(self.plot_data.index), lower=np.zeros(self.plot_data.index.size), upper=totals))
@@ -443,13 +453,13 @@ class ContributionPlot(BokehPlot):
             contribution_plot.add_layout(w)
 
             total_legend = Label(x=0, y=-45, x_units='screen', y_units='screen',
-                                 text=' H Aggregate value ', render_mode='css', text_color='red',
-                                 border_line_color='black', border_line_alpha=1.0, text_font_size="10pt",
-                                 text_font_style="bold", background_fill_color='white', background_fill_alpha=1.0)
+                                 text=' H Aggregate value ', text_color='red', border_line_color='black',
+                                 border_line_alpha=1.0, text_font_size="10pt", text_font_style="bold",
+                                 background_fill_color='white', background_fill_alpha=1.0)
             contribution_plot.add_layout(total_legend)
 
-        if not has_negative_values:
-            contribution_plot.x_range.start = 0
+#        if not has_negative_values:
+#            contribution_plot.x_range.start = 0 # TODO find an alternative approach, this is a read-only property
 
         if unit:
             contribution_plot.xaxis.axis_label = unit
@@ -679,7 +689,8 @@ class SimpleDistributionPlot(Plot):
 
 
 class BokehPlotUtils:
-    BOKEH_JS_File_Name = "bokeh-2.4.1.min.js"
+#    BOKEH_JS_File_Name = "bokeh-2.4.1.min.js"
+    BOKEH_JS_File_Name = "bokeh-3.0.3.min.js"
 
     @staticmethod
     def build_html_bokeh_template(add_context_menu_communication: bool = False,
@@ -723,7 +734,7 @@ class BokehPlotUtils:
 
     @staticmethod
     def calculate_results_chart_height(bar_count: int = 1, legend_item_count: int = 1):
-        return 120 + (45 * bar_count) + (40 * legend_item_count)
+        return 120 + (35 * bar_count) + (40 * legend_item_count)
 
     @staticmethod
     def style_and_place_legend(plot, location):
@@ -740,7 +751,7 @@ class BokehPlotUtils:
         plot.legend[0].margin = 0
         plot.legend.border_line_color = None
         new_legend.click_policy = 'hide'
-        plot.add_layout(new_legend, 'below')
+#        plot.add_layout(new_legend, 'below')
 
     @staticmethod
     def style_axis_labels(axis):

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import brightway2 as bw
 from bw2analyzer import ContributionAnalysis
+import time
 
 ca = ContributionAnalysis()
 
