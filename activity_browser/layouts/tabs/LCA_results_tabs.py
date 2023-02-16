@@ -30,7 +30,7 @@ from ...ui.figures import (
 )
 from ...ui.style import horizontal_line, vertical_line, header
 from ...ui.tables import ContributionTable, InventoryTable, LCAResultsTable
-from ...ui.widgets import CutoffMenu, SwitchComboBox
+from ...ui.widgets import CutoffMenu, SwitchComboBox, ABResultsCheckboxes
 from ...ui.web import SankeyNavigatorWidget
 
 
@@ -60,7 +60,7 @@ def get_unit(method: tuple, relative: bool = False) -> str:
 
 # Special namedtuple for the LCAResults TabWidget.
 Tabs = namedtuple(
-    "tabs", ("inventory", "results", "ef", "process", "sankey", "mc", "gsa")
+    "tabs", ("resultSetup", "inventory", "results", "ef", "process", "sankey", "mc", "gsa")
 )
 Relativity = namedtuple("relativity", ("relative", "absolute"))
 ExportTable = namedtuple("export_table", ("label", "copy", "csv", "excel"))
@@ -107,6 +107,7 @@ class LCAResultsSubTab(QTabWidget):
         self.single_method = True if len(self.mlca.methods) == 1 else False
 
         self.tabs = Tabs(
+            resultSetup=ResultSetupTab(self),
             inventory=InventoryTab(self),
             results=LCAResultsTab(self),
             ef=ElementaryFlowContributionTab(self),
@@ -116,6 +117,7 @@ class LCAResultsSubTab(QTabWidget):
             gsa=GSATab(self),
         )
         self.tab_names = Tabs(
+            resultSetup="Results Options",
             inventory="Inventory",
             results="LCA Results",
             ef="EF Contributions",
@@ -125,7 +127,7 @@ class LCAResultsSubTab(QTabWidget):
             gsa="Sensitivity Analysis",
         )
         self.setup_tabs()
-        self.setCurrentWidget(self.tabs.results)
+        self.setCurrentWidget(self.tabs.resultSetup)
         self.currentChanged.connect(self.generate_content_on_click)
         QApplication.restoreOverrideCursor()
 
@@ -352,6 +354,45 @@ class NewAnalysisTab(QWidget):
 
         export_menu.addStretch()
         return export_menu
+
+
+class ResultSetupTab(QWidget):
+    """Class for the interface for users to structure the presentation of results.
+
+    This tab will handle the interactivity for determining which results are presented.
+
+    Contains:
+        controls for determining which scenarios to show
+        controls for determining which reference flows to show
+        controls for determining which impact categories to show
+        controls for the ordering of reference flows and impact categories
+        controls to allow direct export of results (skip the results tabs)
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.reference_flow_buttons = ABResultsCheckboxes(get_header_layout("Reference Flows:"))
+        self.impact_category_buttons = ABResultsCheckboxes(get_header_layout("Impact Assessment Methods:"))
+        self.scenario_buttons = list()
+        self.direct_export = QPushButton("Export (all results)")
+
+        self.reference_flow_buttons.update_boxes(self.parent.mlca.func_key_list)
+        self.impact_category_buttons.update_boxes(self.parent.mlca.methods)
+
+        self.layout = QVBoxLayout()
+        self.non_scenario_buttons = QHBoxLayout()
+        self.non_scenario_buttons.addWidget(self.reference_flow_buttons)
+        self.non_scenario_buttons.addWidget(self.impact_category_buttons)
+        self.layout.addLayout(self.non_scenario_buttons)
+        self.layout.addStretch(1)
+        if self.parent.has_scenarios:
+            pass
+
+        self.layout.addWidget(self.direct_export)
+        self.setLayout(self.layout)
+
+    def update_checkboxes(self, category: ABResultsCheckboxes = None, labels: list() = None) -> None:
+        category.update_boxes(labels)
 
 
 class InventoryTab(NewAnalysisTab):

@@ -262,13 +262,17 @@ class ScenarioImportPanel(BaseRightTab):
         super().__init__(parent)
 
         self.explain_text = """
-        <p>You can import two different scenario types here:</p>
+        <p>You can import <b>two different scenario types</b> here:</h4>
         <p>1. <b>flow-scenarios</b>: flow scenarios are alternative values for exchanges (flows between processes or between processes and the environment)</p>
         <p>2. <b>parameter-scenarios</b>: alternative values for parameters you use within a project</p>
-        <p>If you do not know how such files look like, you can go to the Parameters --> Scenarios tab.
+        <p>If <i>you do not know</i> how such files look like, you can go to the Parameters --> Scenarios tab.
          Then click "Export parameter-scenarios" to obtain a parameter-scenarios file or  
          "Export as flow-scenarios" to obtain a flow-scenarios file. 
          Note that you need to have at least one parameterized activity to obtain flow-scenarios</p>
+         <br>
+         <p> If you have <i>more than one</i> file then you will need to <b>choose how to combine</b> them. </p>
+        <p>1. <b>Addition</b>: each scenario works in parallel with the other scenarios</p>
+        <p>2. <b>Multiplicative</b>: the scenarios combine through interactions defined as occurring between the files</p>         
         """
 
         self.tables = []

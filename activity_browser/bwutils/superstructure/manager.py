@@ -23,7 +23,7 @@ class SuperstructureManager(object):
         self.frames: List[pd.DataFrame] = [
             SuperstructureManager.format_dataframe(df)
         ] + [SuperstructureManager.format_dataframe(f) for f in dfs]
-        self.is_multiple = len(self.frames) > 1
+        self.is_multiple = len(self.frames) > 1 # csv version scen1 and scen2 indices are as tuples of strings
 
     def combined_data(self, kind: str = "product") -> pd.DataFrame:
         """Combines multiple superstructures using a specific kind of logic.
