@@ -25,7 +25,7 @@ class SuperstructureManager(object):
         ] + [SuperstructureManager.format_dataframe(f) for f in dfs]
         self.is_multiple = len(self.frames) > 1
 
-    def combined_data(self, kind: str = "product") -> pd.DataFrame:
+    def combined_data(self, kind: str = "product", check_duplicates = None) -> pd.DataFrame:
         """Combines multiple superstructures using a specific kind of logic.
 
         Currently implemented: 'product' creates an outer-product combination
@@ -58,6 +58,8 @@ class SuperstructureManager(object):
             df = SuperstructureManager.addition_combine_frames(
                 self.frames, combo_idx, cols
             )
+            if check_duplicates is not None:
+                df = check_duplicates(df)
         else:
             df = pd.DataFrame([], index=combo_idx)
 
@@ -165,7 +167,6 @@ class SuperstructureManager(object):
             extra_df.loc[:, scenario_cols] -= df.loc[tech_idxs, scenario_cols].values
             extra_df.loc[:, scenario_cols] = extra_df.loc[:, scenario_cols] / (extra_df.loc[:, scenario_cols] +
                                                                                df.loc[tech_idxs, scenario_cols].values)
-
             # drop the 'technosphere' flows
             df = df.drop(flows_to_self.index)
             df = df.drop(prod_indexes)
