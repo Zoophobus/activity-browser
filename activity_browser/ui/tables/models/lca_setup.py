@@ -148,13 +148,13 @@ class CSActivityModel(CSGenericModel):
         signals.calculation_setup_changed.emit()  # Trigger update of CS in brightway
 
     def include_activities(self, new_activities: Iterable) -> None:
-        existing = set(self._dataframe.loc[:, "key"])
+#        existing = set(self._dataframe.loc[:, "key"])
         data = []
-        for fu in (f for f in new_activities if existing.isdisjoint(f)):
+        for fu in (f for f in new_activities):# if existing.isdisjoint(f)):
             k, v = zip(*fu.items())
             data.append(self.build_row(k[0], v[0]))
         if data:
-            self._dataframe = pd.concat([self._dataframe,pd.DataFrame(data)], ignore_index=True)
+            self._dataframe = pd.concat([self._dataframe, pd.DataFrame(data)], ignore_index=True)
             self.updated.emit()
             signals.calculation_setup_changed.emit()
 

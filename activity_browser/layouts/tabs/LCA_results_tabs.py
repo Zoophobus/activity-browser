@@ -3,7 +3,7 @@
 
 Each of these classes is either a parent for - or a sub-LCA results tab.
 """
-
+import ast
 from collections import namedtuple
 import traceback
 from typing import List, Optional, Union
@@ -31,7 +31,10 @@ from ...ui.figures import (
 )
 from ...ui.icons import qicons
 from ...ui.style import horizontal_line, vertical_line, header
-from ...ui.tables import ContributionTable, InventoryTable, LCAResultsTable
+from ...ui.tables import (
+    ContributionTable, InventoryTable, LCAResultsTable, FilterReferencesTable,
+    FilterScenariosTable, FilterMethodsTable
+)
 from ...ui.widgets import CutoffMenu, SwitchComboBox
 from ...ui.web import SankeyNavigatorWidget
 from .base import BaseRightTab
@@ -69,7 +72,7 @@ def get_unit(method: tuple, relative: bool = False) -> str:
 
 # Special namedtuple for the LCAResults TabWidget.
 Tabs = namedtuple(
-    "tabs", ("inventory", "results", "ef", "process", "sankey", "mc", "gsa")
+    "tabs", ("resultSettings", "inventory", "results", "ef", "process", "sankey", "mc", "gsa")
 )
 Relativity = namedtuple("relativity", ("relative", "absolute"))
 ExportTable = namedtuple("export_table", ("label", "copy", "csv", "excel"))
@@ -101,7 +104,7 @@ class LCAResultsSubTab(QTabWidget):
         self.mlca: Optional[Union[MLCA, SuperstructureMLCA]] = None
         self.contributions: Optional[Contributions] = None
         self.mc: Optional[MonteCarloLCA] = None
-        self.method_dict = dict()
+#        self.method_dict = dict()
         self.single_func_unit = False
         self.single_method = False
 
@@ -111,11 +114,12 @@ class LCAResultsSubTab(QTabWidget):
 
         QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         self.mlca, self.contributions, self.mc = calculations.do_LCA_calculations(data)
-        self.method_dict = bc.get_LCIA_method_name_dict(self.mlca.methods)
-        self.single_func_unit = True if len(self.mlca.func_units) == 1 else False
-        self.single_method = True if len(self.mlca.methods) == 1 else False
+#        self.method_dict = bc.get_LCIA_method_name_dict(self.mlca.methods_dataframe.loc[:, 'method_name'])
+        self.single_func_unit = True if self.mlca.reference_dataframe.shape[0] == 1 else False
+        self.single_method = True if self.mlca.methods_dataframe.shape[0] == 1 else False
 
         self.tabs = Tabs(
+            resultSettings=ResultSetupTab(self),
             inventory=InventoryTab(self),
             results=LCAResultsTab(self),
             ef=ElementaryFlowContributionTab(self),
@@ -125,6 +129,7 @@ class LCAResultsSubTab(QTabWidget):
             gsa=GSATab(self),
         )
         self.tab_names = Tabs(
+            resultSettings ='Result Settings',
             inventory="Inventory",
             results="LCA Results",
             ef="EF Contributions",
@@ -134,7 +139,7 @@ class LCAResultsSubTab(QTabWidget):
             gsa="Sensitivity Analysis",
         )
         self.setup_tabs()
-        self.setCurrentWidget(self.tabs.results)
+        self.setCurrentWidget(self.tabs.resultSettings)
         self.currentChanged.connect(self.generate_content_on_click)
         QApplication.restoreOverrideCursor()
 
@@ -151,7 +156,8 @@ class LCAResultsSubTab(QTabWidget):
         """Update each sub-tab that can be updated."""
         for tab in self.tabs:
             if tab and hasattr(tab, "update_tab"):
-                tab.update_tab()
+                tab.update_tab(reference_flows=self.mlca.reference_dataframe, methods=self.mlca.methods_dataframe,
+                               scenarios=self.mlca.scenario_dataframe if self.has_scenarios else None)
         self.tabs.sankey.update_calculation_setup(cs_name=self.cs_name)
 
     @QtCore.Slot(int, name="updateUnderlyingMatrices")
@@ -277,7 +283,7 @@ class NewAnalysisTab(BaseRightTab):
 
     def get_scenario_labels(self) -> List[str]:
         """Get scenario labels if scenarios are used."""
-        return self.parent.mlca.scenario_names if self.has_scenarios else []
+        return self.parent.mlca.scenario_dataframe['name'].to_list() if self.has_scenarios else []
 
     def configure_scenario(self):
         """Determine if scenario Qt widgets are visible or not and retrieve
@@ -303,12 +309,12 @@ class NewAnalysisTab(BaseRightTab):
         box.insertItems(0, labels)
         box.blockSignals(False)
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         """Update the plot and table if they are present."""
         if self.plot:
-            self.update_plot()
+            self.update_plot(**kwargs)
         if self.table:
-            self.update_table()
+            self.update_table(**kwargs)
         if self.plot and self.table:
             self.space_check()
 
@@ -373,6 +379,46 @@ class NewAnalysisTab(BaseRightTab):
 
         export_menu.addStretch()
         return export_menu
+
+
+class ResultSetupTab(QWidget):
+    """Class for the interface for users to structure the presentation of results.
+
+    This tab will handle the interactivity for determining which results are presented.
+
+    Contains:
+        controls for determining which scenarios to show
+        controls for determining which reference flows to show
+        controls for determining which impact categories to show
+        controls for the ordering of reference flows and impact categories
+        controls to allow direct export of results (skip the results tabs)
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.reference_flow_table = FilterReferencesTable(self)
+        self.impact_category_table = FilterMethodsTable(self)
+        self.scenario_table = None
+        self.filter_button = QPushButton("Update")
+        button_box = QHBoxLayout()
+        button_box.addWidget(self.filter_button)
+        button_box.addStretch(1)
+        self.layout = QVBoxLayout()
+        self.layout.addLayout(button_box)
+        self.layout.addStretch(1)
+        self.layout.addWidget(header("Reference Flows:"))
+        self.layout.addWidget(self.reference_flow_table)
+        self.layout.addStretch(1)
+        self.layout.addWidget(header("Impact Assessment Methods:"))
+        self.layout.addWidget(self.impact_category_table)
+        self.layout.addStretch(1)
+        if self.parent.has_scenarios:
+            self.scenario_table = FilterScenariosTable(self)
+            self.layout.addWidget(header("Scenarios:"))
+            self.layout.addWidget(self.scenario_table)
+            self.layout.addStretch(1)
+        self.setLayout(self.layout)
+        self.filter_button.clicked.connect(lambda: signals.update_lca_results.emit())
 
 
 class InventoryTab(NewAnalysisTab):
@@ -459,6 +505,7 @@ class InventoryTab(NewAnalysisTab):
             self.parent.update_scenario_box_index.connect(
                 lambda index: self.set_combobox_index(self.scenario_box, index)
             )
+        signals.update_lca_results.connect(self.update_filters)
 
     @QtCore.Slot(QRadioButton, name="addCategorisationFactorFilter")
     def add_categorisation_factor_filter(self, index: int):
@@ -471,7 +518,12 @@ class InventoryTab(NewAnalysisTab):
         else:
             self.categorisation_filter_with_flows = None
             self.categorisation_factor_state = None
-        self.update_table()
+        self.update_table(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[
+                self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
         self.old_categorisation_factor_state = self.categorisation_factor_state
 
     @QtCore.Slot(QRadioButton, name="toggleCategorisationFactorFilterButtons")
@@ -501,19 +553,24 @@ class InventoryTab(NewAnalysisTab):
         super().configure_scenario()
         self.scenario_label.setVisible(self.has_scenarios)
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         """Update the tab."""
         self.clear_tables()
-        super().update_tab()
+        super().update_tab(**kwargs)
 
-    def elementary_flows_contributing_to_IA_methods(self, contributary: bool = True, bios: pd.DataFrame = None) -> pd.DataFrame:
-        """Returns a biosphere dataframe filtered for the presence in the impact assessment methods
+    def elementary_flows_contributing_to_IA_methods(self, contributes: bool = True, bios: pd.DataFrame = None) -> pd.DataFrame:
+        """Returns the lifecycle inventory filtered for the presence of containing exchanges with the impact
+        assessment methods used to assess the reference flows/product systems.
+
         Requires a boolean argument for whether those flows included in the impact assessment method
         should be returned (True), or not (False)
+        TODO Change the name start with df_...
+        TODO
         """
-        incl_flows = {self.parent.contributions.inventory_data['biosphere'][1][k] for mthd in self.parent.mlca.method_matrices for k in mthd.indices}
+        incl_flows = {self.parent.contributions.inventory_data['biosphere'][1][k]
+                      for mthd in self.parent.mlca.method_matrices for k in mthd.indices}
         data = bios if bios is not None else self.df_biosphere
-        if contributary:
+        if contributes:
             flows = incl_flows
         else:
             flows = (set(self.parent.contributions.inventory_data['biosphere'][1].values())).difference(incl_flows)
@@ -521,8 +578,7 @@ class InventoryTab(NewAnalysisTab):
 
         return data.loc[data['code'].isin(new_flows)]
 
-
-    def update_table(self):
+    def update_table(self, reference_flows=None, methods=None, scenarios=None):
         """Update the table."""
         inventory = "biosphere" if self.radio_button_biosphere.isChecked() else "technosphere"
         self.table.showing = inventory
@@ -531,7 +587,8 @@ class InventoryTab(NewAnalysisTab):
         if getattr(self, attr_name) is None or self.remove_zero_state != self.last_remove_zero_state \
                 or self.old_categorisation_factor_state != self.categorisation_factor_state:
             setattr(self, attr_name, self.parent.contributions.inventory_df(
-                inventory_type=inventory)
+                inventory_type=inventory, reference_flows=reference_flows,
+                methods=methods, scenarios=scenarios)
                     )
 
         # filter the biosphere flows for the relevance to the CFs
@@ -557,6 +614,13 @@ class InventoryTab(NewAnalysisTab):
     def _update_table(self, table: pd.DataFrame, drop: str = 'code'):
         """Update the table."""
         self.table.model.sync((table.drop(drop, axis=1)).reset_index(drop=True))
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+                        )
 
 class LCAResultsTab(NewAnalysisTab):
     """Class for the 'LCA Results' sub-tab.
@@ -617,6 +681,8 @@ class LCAResultsTab(NewAnalysisTab):
             self.button_by_method.toggled.connect(
                 lambda on_lcia: self.scenario_label.setHidden(on_lcia)
             )
+        signals.update_lca_results.connect(self.update_filters)
+
 
     @QtCore.Slot(bool, name="overviewToggled")
     def button_clicked(self, is_overview: bool):
@@ -629,10 +695,16 @@ class LCAResultsTab(NewAnalysisTab):
         self.scenario_box.setHidden(self.button_by_method.isChecked())
         self.scenario_label.setHidden(self.button_by_method.isChecked())
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         """Update the tab."""
-        self.lca_scores_widget.update_tab()
-        self.lca_overview_widget.update_tab()
+        self.lca_scores_widget.update_tab(**kwargs)
+        self.lca_overview_widget.update_tab(**kwargs)
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
 
 
 class LCAScoresTab(NewAnalysisTab):
@@ -660,7 +732,7 @@ class LCAScoresTab(NewAnalysisTab):
         self.connect_signals()
 
     def connect_signals(self):
-        self.combobox.currentIndexChanged.connect(self.update_plot)
+        self.combobox.currentTextChanged.connect(self.update_plot)
 
     def build_export(self, has_table: bool = True, has_plot: bool = True) -> QHBoxLayout:
         """Add 3d excel export if scenario-type LCA is performed."""
@@ -681,22 +753,39 @@ class LCAScoresTab(NewAnalysisTab):
             layout.addSpacerItem(stretch)
         return layout
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         """Update the tab."""
-        self.update_combobox(self.combobox, [str(m) for m in self.parent.mlca.methods])
-        super().update_tab()
+        if 'methods' in kwargs:
+            methods = list(', '.join(method) for method in kwargs['methods'].loc[:, 'method_name'])
+        else:
+            methods = list(', '.join(method) for method in self.parent.mlca.methods_dataframe.loc[:,'method_name'])
+        self.update_combobox(self.combobox, methods)
+        kwargs['method'] = kwargs['methods'].loc[:, 'method_name'].to_list()[0] if not kwargs['methods'].empty else None
+        super().update_tab(**kwargs)
 
-    @QtCore.Slot(int, name="updatePlotWithIndex")
-    def update_plot(self, method_index: int = 0):
+    @QtCore.Slot(str, name="updatePlotWithIndex")
+    def update_plot(self, method: str = None, **kwargs):
         """Update the plot."""
-        method = self.parent.mlca.methods[method_index]
-        df = self.parent.mlca.get_results_for_method(method_index)
+        if method is None:
+            method = self.parent.mlca.methods_dataframe.loc['0', 'method_name']
+        elif isinstance(method, str):
+            method = tuple(method.split(', '))
+        if 'reference_flows' in kwargs:
+            reference_flows = kwargs['reference_flows']
+        else:
+            reference_flows = self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']]
+        select = [int(i) for i in reference_flows.index]
+
+        df = self.parent.mlca.get_results_for_method(
+            int(self.parent.mlca.methods_dataframe.loc[self.parent.mlca.methods_dataframe['method_name'] == method].index.tolist()[0])
+        )
+        df = df.iloc[select, :]
         labels = [
-            bc.format_activity_label(next(iter(fu.keys())), style='pnld')
-            for fu in self.parent.mlca.func_units
+            bc.format_activity_label(fu, style='pnld') for fu in
+            reference_flows.loc[:, 'reference_key']
         ]
         idx = self.layout.indexOf(self.plot)
-        self.plot.figure.clf()
+        self.plot.figure.clear(True)
         self.plot.deleteLater()
         self.plot = LCAResultsBarChart(self.parent)
         self.layout.insertWidget(idx, self.plot)
@@ -743,11 +832,11 @@ class LCIAResultsTab(NewAnalysisTab):
             layout.addSpacerItem(stretch)
         return layout
 
-    def update_tab(self):
-        self.df = self.parent.contributions.lca_scores_df(normalized=self.relative)
-        super().update_tab()
+    def update_tab(self, **kwargs):
+        self.df = self.parent.contributions.lca_scores_df(normalized=self.relative, **kwargs)
+        super().update_tab(**kwargs)
 
-    def update_plot(self):
+    def update_plot(self, **kwargs):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)
         self.plot.figure.clf()
@@ -758,7 +847,7 @@ class LCIAResultsTab(NewAnalysisTab):
         if self.pt_layout.parentWidget():
             self.pt_layout.parentWidget().updateGeometry()
 
-    def update_table(self):
+    def update_table(self, **kwargs):
         super().update_table(self.df)
 
 
@@ -802,9 +891,15 @@ class ContributionTab(NewAnalysisTab):
     def set_filename(self, optional_fields: dict = None):
         """Given a dictionary of fields, put together a usable filename for the plot and table."""
         optional = optional_fields or {}
+
+        methods = optional.get('method_data')
+        reference_flows = optional.get('reference_flows')
+        method = methods.loc[optional.get('method'), 'label'] if 'method' in optional else None
+        ref_flow = reference_flows.loc[optional.get('functional_unit'), 'reference_name'] if 'functional_unit' in optional else None
+
         fields = (
-            self.parent.cs_name, self.contribution_fn, optional.get("method"),
-            optional.get("functional_unit"), self.unit
+            self.parent.cs_name, self.contribution_fn,
+            method, ref_flow, self.unit
         )
         filename = '_'.join((str(x) for x in fields if x is not None))
         self.plot.plot_name, self.table.table_name = filename, filename
@@ -813,10 +908,7 @@ class ContributionTab(NewAnalysisTab):
         """Construct a horizontal layout for picking and choosing what data to show and how."""
         menu = QHBoxLayout()
         # Populate the drop-down boxes with their relevant values.
-        self.combobox_menu.func.addItems(
-            list(self.parent.mlca.func_unit_translation_dict.keys())
-        )
-        self.combobox_menu.method.addItems(list(self.parent.method_dict.keys()))
+        self.update_combobox_menu()
 
         menu.addWidget(self.switch_label)
         menu.addWidget(self.switches)
@@ -829,7 +921,7 @@ class ContributionTab(NewAnalysisTab):
         menu.addWidget(self.combobox_menu.func)
         menu.addWidget(self.combobox_menu.agg_label)
         menu.addWidget(self.combobox_menu.agg)
-        menu.addStretch()
+        menu.addStretch(0)
 
         self.has_method = has_method
         self.has_func = has_func
@@ -846,7 +938,11 @@ class ContributionTab(NewAnalysisTab):
         self.toggle_func(index == self.switches.indexes.func)
         self.toggle_method(index == self.switches.indexes.method)
         self.toggle_scenario(index == self.switches.indexes.scenario)
-        self.update_tab()
+        self.update_tab(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
 
     @QtCore.Slot(bool, name="hideScenarioCombo")
     def toggle_scenario(self, active: bool):
@@ -865,8 +961,10 @@ class ContributionTab(NewAnalysisTab):
         self.combobox_menu.method.setHidden(active)
         self.combobox_menu.method_label.setHidden(active)
 
+    # TODO Convert the following to use the currentIndex() method of the ComboBox
+    # TODO this can then be used to collect the correct Reference flows and IAMs
     @QtCore.Slot(name="comboboxTriggerUpdate")
-    def set_combobox_changes(self):
+    def set_combobox_changes(self, **kwargs):
         """Update fields based on user-made changes in combobox.
 
         Any trigger linked to this slot will cause the values in the
@@ -881,20 +979,25 @@ class ContributionTab(NewAnalysisTab):
         # Determine which comparison is active and update the comparison.
         if self.switches.currentIndex() == self.switches.indexes.func:
             compare_fields.update({
-                "method": self.parent.method_dict[self.combobox_menu.method.currentText()],
+                "method": kwargs['methods'].index[self.combobox_menu.method.currentIndex()],
             })
         elif self.switches.currentIndex() == self.switches.indexes.method:
             compare_fields.update({
-                "functional_unit": self.combobox_menu.func.currentText(),
+                "functional_unit": kwargs['reference_flows'].index[self.combobox_menu.func.currentIndex()],
             })
         elif self.switches.currentIndex() == self.switches.indexes.scenario:
             compare_fields.update({
-                "method": self.parent.method_dict[self.combobox_menu.method.currentText()],
-                "functional_unit": self.combobox_menu.func.currentText(),
+                "method": kwargs['methods'].index[self.combobox_menu.method.currentIndex()],
+                "functional_unit": kwargs['reference_flows'].index[self.combobox_menu.func.currentIndex()],
             })
 
         # Determine the unit for the figure, update the filenames and the
         # underlying dataframe.
+        compare_fields.update({
+            'reference_flows': kwargs['reference_flows'],
+            'method_data': kwargs['methods'],
+            'scenario_data': kwargs['scenarios']
+        })
         self.unit = get_unit(compare_fields.get("method"), self.relative)
         self.set_filename(compare_fields)
         self.df = self.update_dataframe(**compare_fields)
@@ -906,11 +1009,12 @@ class ContributionTab(NewAnalysisTab):
         self.combobox_menu.method.currentIndexChanged.connect(self.update_tab)
         self.combobox_menu.func.currentIndexChanged.connect(self.update_tab)
         self.combobox_menu.agg.currentIndexChanged.connect(self.update_tab)
+        self.combobox_menu.scenario.currentIndexChanged.connect(self.update_tab)
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         """Update the tab."""
-        self.set_combobox_changes()
-        super().update_tab()
+        self.set_combobox_changes(**kwargs)
+        super().update_tab(**kwargs)
 
     def update_dataframe(self, *args, **kwargs):
         """Update the underlying dataframe.
@@ -918,10 +1022,10 @@ class ContributionTab(NewAnalysisTab):
         Implement in subclass."""
         raise NotImplementedError
 
-    def update_table(self):
+    def update_table(self, **kwargs):
         super().update_table(self.df)
 
-    def update_plot(self):
+    def update_plot(self, **kwargs):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)
         self.plot.figure.clf()
@@ -934,6 +1038,23 @@ class ContributionTab(NewAnalysisTab):
         self.plot.plot_name = name
         if self.pt_layout.parentWidget():
             self.pt_layout.parentWidget().updateGeometry()
+
+    def update_with_filters(self):
+        self.update_combbox_menu()
+        self.update_tab()
+
+    def update_combobox_menu(self):
+
+        self.combobox_menu.func.blockSignals(True)
+        self.combobox_menu.func.clear()
+        self.combobox_menu.func.addItems(self.parent.mlca.reference_flow_activities_as_labels)
+        self.combobox_menu.func.blockSignals(False)
+
+        methods = list(', '.join(method) for method in self.parent.mlca.methods_dataframe.loc[:,'method_name'])
+        self.combobox_menu.method.blockSignals(True)
+        self.combobox_menu.method.clear()
+        self.combobox_menu.method.addItems(methods)
+        self.combobox_menu.method.blockSignals(False)
 
 
 class ElementaryFlowContributionTab(ContributionTab):
@@ -971,6 +1092,8 @@ class ElementaryFlowContributionTab(ContributionTab):
         self.switches.configure(self.has_func, self.has_method)
         self.connect_signals()
         self.toggle_comparisons(self.switches.indexes.func)
+        signals.update_lca_results.connect(self.update_filters)
+
 
     def build_combobox(self, has_method: bool = True,
                        has_func: bool = False) -> QHBoxLayout:
@@ -983,6 +1106,12 @@ class ElementaryFlowContributionTab(ContributionTab):
             **kwargs, limit=self.cutoff_menu.cutoff_value,
             limit_type=self.cutoff_menu.limit_type, normalize=self.relative
         )
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
 
 
 class ProcessContributionsTab(ContributionTab):
@@ -1020,6 +1149,8 @@ class ProcessContributionsTab(ContributionTab):
         self.switches.configure(self.has_func, self.has_method)
         self.connect_signals()
         self.toggle_comparisons(self.switches.indexes.func)
+        signals.update_lca_results.connect(self.update_filters)
+
 
     def build_combobox(self, has_method: bool = True,
                        has_func: bool = False) -> QHBoxLayout:
@@ -1032,6 +1163,12 @@ class ProcessContributionsTab(ContributionTab):
             **kwargs, limit=self.cutoff_menu.cutoff_value,
             limit_type=self.cutoff_menu.limit_type, normalize=self.relative
         )
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
 
 
 class CorrelationsTab(NewAnalysisTab):
@@ -1050,7 +1187,7 @@ class CorrelationsTab(NewAnalysisTab):
             has_table=False, has_plot=not self.parent.single_func_unit
         ))
 
-    def update_plot(self):
+    def update_plot(self, **kwargs):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)
         self.plot.figure.clf()
@@ -1058,7 +1195,7 @@ class CorrelationsTab(NewAnalysisTab):
         self.plot = CorrelationPlot(self.parent)
         self.pt_layout.insertWidget(idx, self.plot)
         df = self.parent.mlca.get_normalized_scores_df()
-        super().update_plot(df)
+        super().update_plot(df, **kwargs)
         if self.pt_layout.parentWidget():
             self.pt_layout.parentWidget().updateGeometry()
 
@@ -1138,6 +1275,8 @@ class MonteCarloTab(NewAnalysisTab):
             self.parent.update_scenario_box_index.connect(
                 lambda index: self.set_combobox_index(self.scenario_box, index)
             )
+        signals.update_lca_results.connect(self.update_filters)
+
 
     def add_MC_ui_elements(self):
         layout_mc = QVBoxLayout()
@@ -1311,8 +1450,9 @@ class MonteCarloTab(NewAnalysisTab):
         super().configure_scenario()
         self.scenario_label.setVisible(self.has_scenarios)
 
-    def update_tab(self):
-        self.update_combobox(self.combobox_methods, [str(m) for m in self.parent.mc.methods])
+    def update_tab(self, **kwargs):
+        methods = kwargs['methods']['method_name'] if 'methods' in kwargs else self.parent.mc.methods
+        self.update_combobox(self.combobox_methods, [str(m) for m in methods])
         # self.update_combobox(self.combobox_methods, [str(m) for m in self.parent.mct.mc.methods])
 
     def update_mc(self, cs_name=None):
@@ -1331,13 +1471,14 @@ class MonteCarloTab(NewAnalysisTab):
 
         # data = self.parent.mc.get_results_by(act_key=act_key, method=method)
         self.df = self.parent.mc.get_results_dataframe(method=method)
-
+        filter = [int(i) for i in self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']].index]
+        self.df = self.df.iloc[:, filter]
         self.update_table()
         self.update_plot(method=method)
         filename = '_'.join([str(x) for x in [self.parent.cs_name, 'Monte Carlo results', str(method)]])
         self.plot.plot_name, self.table.table_name = filename, filename
 
-    def update_plot(self, method):
+    def update_plot(self, method, **kwargs):
         idx = self.layout.indexOf(self.plot)
         self.plot.figure.clf()
         self.plot.deleteLater()
@@ -1345,14 +1486,20 @@ class MonteCarloTab(NewAnalysisTab):
         name = self.plot.plot_name
         self.plot = MonteCarloPlot(self.parent)
         self.layout.insertWidget(idx, self.plot)
-        super().update_plot(self.df, method=method)
+        super().update_plot(self.df, method=method, **kwargs)
         self.plot.plot_name = name
         self.plot.show()
         if self.layout.parentWidget():
             self.layout.parentWidget().updateGeometry()
 
-    def update_table(self):
+    def update_table(self, **kwargs):
         super().update_table(self.df)
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
 
 
 class GSATab(NewAnalysisTab):
@@ -1402,6 +1549,8 @@ class GSATab(NewAnalysisTab):
     def connect_signals(self):
         self.button_run.clicked.connect(self.calculate_gsa)
         signals.monte_carlo_finished.connect(self.monte_carlo_finished)
+        signals.update_lca_results.connect(self.update_filters)
+
 
     def add_GSA_ui_elements(self):
         # H-LAYOUT SETTINGS ROW 1
@@ -1479,9 +1628,9 @@ class GSATab(NewAnalysisTab):
         self.widget_settings.hide()
         # self.label_monte_carlo_first.hide()
 
-    def update_tab(self):
+    def update_tab(self, **kwargs):
         self.update_combobox(self.combobox_methods, [str(m) for m in self.parent.mc.methods])
-        self.update_combobox(self.combobox_fu, list(self.parent.mlca.func_unit_translation_dict.keys()))
+        self.update_combobox(self.combobox_fu, self.parent.mlca.reference_flow_activities_as_labels)
 
     def monte_carlo_finished(self):
         self.button_run.setEnabled(True)
@@ -1531,10 +1680,10 @@ class GSATab(NewAnalysisTab):
             self.GSA.export_GSA_input()
             self.GSA.export_GSA_output()
 
-    def update_plot(self, method):
+    def update_plot(self, method, **kwargs):
         pass
 
-    def update_table(self):
+    def update_table(self, **kwargs):
         super().update_table(self.df)
 
     def build_export(self, has_table: bool = True, has_plot: bool = True) -> QWidget:
@@ -1546,6 +1695,12 @@ class GSATab(NewAnalysisTab):
         # Hide widget until MC is calculated
         export_widget.hide()
         return export_widget
+
+    @QtCore.Slot(name="updateFilters")
+    def update_filters(self):
+        self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+                        methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+                        scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
 
     # def set_filename(self, optional_fields: dict = None):
     #     """Given a dictionary of fields, put together a usable filename for the plot and table."""

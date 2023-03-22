@@ -50,13 +50,7 @@ class ExchangeErrorValues(ABError):
     pass
 
 
-class ScenarioExchangeError(ABError):
-    """In the AB we require the exchanges from the scenario file to be mappable to the databases. If this is not the
-        case we MUST throw an error."""
-    pass
-
-
-class ReferenceFlowValueError(ABWarning):
+class ReferenceFlowValueWarning(Warning):
     """While a user can technically perform a calculation with the reference flows all set to 0, such a calculation
      makes no logical sense and will lead to downstream errors (due to 0 results)."""
     pass

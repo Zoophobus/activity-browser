@@ -16,3 +16,4 @@ from .parameters import (
     ActivityParameterModel, ParameterTreeModel
 )
 from .scenarios import ScenarioModel
+from .lca_filter_model import FilterScenariosModel, FilterMethodsModel, FilterReferencesModel

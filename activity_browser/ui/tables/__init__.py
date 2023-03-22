@@ -11,4 +11,5 @@ from .parameters import (ActivityParameterTable, DataBaseParameterTable,
 from .projects import ProjectListWidget
 from .scenarios import ScenarioTable
 from .plugins import PluginsTable
+from .lca_filter_table import FilterReferencesTable, FilterMethodsTable, FilterScenariosTable
 

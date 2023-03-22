@@ -135,8 +135,8 @@ class CSActivityTable(CSGenericTable):
         if getattr(event.source(), "technosphere", False):
             log.info('Dropevent from:', source)
             self.model.include_activities(
-                {source.get_key(p): 1.0} for p in source.selectedIndexes()
-            )
+                    {source.get_key(p): 1.0} for p in source.selectedIndexes()
+                )
         elif event.source() is self:
             selection = self.selectedIndexes()
             from_index = selection[0].row() if selection else -1
