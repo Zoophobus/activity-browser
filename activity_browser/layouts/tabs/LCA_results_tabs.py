@@ -374,8 +374,8 @@ class InventoryTab(NewAnalysisTab):
 
 
         self.layout.addLayout(get_header_layout('Inventory'))
-        self.bio_tech_button_group = QButtonGroup()
-        self.bio_categorisation_factor_group = QComboBox()
+#        self.bio_characterization_button_group = QButtonGroup()
+        self.bio_characterization_factor_group = QComboBox()
         # buttons
         button_layout = QHBoxLayout()
         self.radio_button_biosphere = QRadioButton("Biosphere flows")
@@ -385,11 +385,11 @@ class InventoryTab(NewAnalysisTab):
         self.remove_zeros_checkbox = QCheckBox("Remove '0' values")
         self.remove_zero_state = False
 
-        self.categorisation_factor_filters = ["No filtering with categorisation factors",\
-                                                "Flows without categorisation factors", \
-                                                "Flows with categorisation factors"]
-        self.categorisation_factor_state = None
-        self.old_categorisation_factor_state = self.categorisation_factor_state
+        self.characterization_factor_filters = ["Show all flows",\
+                                                "Show flows only with characterization factors", \
+                                                "Show flows only without characterization factors"]
+        self.characterization_factor_state = None
+        self.old_characterization_factor_state = self.characterization_factor_state
 
         self.last_remove_zero_state = self.remove_zero_state
         self.remove_zeros_checkbox.setChecked(self.remove_zero_state)
@@ -399,27 +399,28 @@ class InventoryTab(NewAnalysisTab):
         self.scenario_label = QLabel("Scenario:")
 
         # Group the radio buttons into the appropriate groups for the window
-        self.update_combobox(self.bio_categorisation_factor_group, self.categorisation_factor_filters)
-        self.bio_categorisation_factor_group.setMaximumWidth(300)
-        self.bio_categorisation_factor_group.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
+        self.update_combobox(self.bio_characterization_factor_group, self.characterization_factor_filters)
+        self.bio_characterization_factor_group.setMaximumWidth(300)
+        self.bio_characterization_factor_group.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
 
         # Setup the Qt environment for the buttons, including the arrangement
-        self.categorisation_filter_layout = QVBoxLayout()
-        self.categorisation_filter_layout.addWidget(QLabel("Filter flows:"))
-        self.categorisation_filter_layout.addWidget(self.bio_categorisation_factor_group)
-        self.categorisation_filter_box = QWidget()
-        self.categorisation_filter_box.setLayout(self.categorisation_filter_layout)
-        self.categorisation_filter_box.setVisible(True)
-        self.categorisation_filter_with_flows = None
+#        self.categorisation_filter_layout = QVBoxLayout()
+#        self.categorisation_filter_layout.addWidget(QLabel("Filter flows:"))
+#        self.categorisation_filter_layout.addWidget(self.bio_categorisation_factor_group)
+#        self.categorisation_filter_box = QWidget()
+#        self.categorisation_filter_box.setLayout(self.categorisation_filter_layout)
+#        self.categorisation_filter_box.setVisible(True)
+#        self.categorisation_filter_with_flows = None
 
         button_layout.addWidget(self.radio_button_biosphere)
         button_layout.addWidget(self.radio_button_technosphere)
         button_layout.addWidget(self.scenario_label)
         button_layout.addWidget(self.scenario_box)
         button_layout.addStretch(1)
+        button_layout.addWidget(self.bio_characterization_factor_group)
         button_layout.addWidget(self.remove_zeros_checkbox)
         self.layout.addLayout(button_layout)
-        self.layout.addWidget(self.categorisation_filter_box)
+#        self.layout.addWidget(self.categorisation_filter_box)
         # table
         self.table = InventoryTable(self.parent)
         self.table.table_name = 'Inventory_' + self.parent.cs_name
@@ -433,8 +434,7 @@ class InventoryTab(NewAnalysisTab):
     def connect_signals(self):
         self.radio_button_biosphere.toggled.connect(self.button_clicked)
         self.remove_zeros_checkbox.toggled.connect(self.remove_zeros_checked)
-        self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
-        self.bio_categorisation_factor_group.activated.connect(self.add_categorisation_factor_filter)
+        self.bio_characterization_factor_group.activated.connect(self.add_characterization_factor_filter)
         if self.has_scenarios:
             self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
             self.parent.update_scenario_box_index.connect(
@@ -442,26 +442,15 @@ class InventoryTab(NewAnalysisTab):
             )
 
     @QtCore.Slot(QRadioButton, name="addCategorisationFactorFilter")
-    def add_categorisation_factor_filter(self, index: int):
-        if self.bio_categorisation_factor_group.currentText() ==  "Flows without categorisation factors":
-            self.categorisation_filter_with_flows = False
-            self.categorisation_factor_state = False
-        elif self.bio_categorisation_factor_group.currentText() == "Flows with categorisation factors":
-            self.categorisation_filter_with_flows = True
-            self.categorisation_factor_state = True
+    def add_characterization_factor_filter(self, index: int):
+        if self.bio_characterization_factor_group.currentText() == "Show flows only without characterization factors":
+            self.characterization_factor_state = False
+        elif self.bio_characterization_factor_group.currentText() == "Show flows only with characterization factors":
+            self.characterization_factor_state = True
         else:
-            self.categorisation_filter_with_flows = None
-            self.categorisation_factor_state = None
+            self.characterization_factor_state = None
         self.update_table()
-        self.old_categorisation_factor_state = self.categorisation_factor_state
-
-    @QtCore.Slot(QRadioButton, name="toggleCategorisationFactorFilterButtons")
-    def toggle_categorisation_factor_filter_buttons(self, bttn: QRadioButton):
-        if bttn.text() == "Biosphere flows":
-            self.categorisation_filter_box.setVisible(True)
-        else:
-            self.categorisation_filter_box.setVisible(False)
-            self.categorisation_factor_state = None
+        self.old_characterization_factor_state = self.characterization_factor_state
 
     @QtCore.Slot(bool, name="isRemoveZerosToggled")
     def remove_zeros_checked(self, toggled: bool):
@@ -474,6 +463,7 @@ class InventoryTab(NewAnalysisTab):
     def button_clicked(self, toggled: bool):
         """Update table according to radiobutton selected."""
         ext = "_Inventory" if toggled else "_Inventory_technosphere"
+        self.bio_characterization_factor_group.setHidden(False if toggled else True)
         self.table.table_name = "{}{}".format(self.parent.cs_name, ext)
         self.update_table()
 
@@ -510,14 +500,14 @@ class InventoryTab(NewAnalysisTab):
         # We handle both 'df_biosphere' and 'df_technosphere' variables here.
         attr_name = "df_{}".format(inventory)
         if getattr(self, attr_name) is None or self.remove_zero_state != self.last_remove_zero_state \
-                or self.old_categorisation_factor_state != self.categorisation_factor_state:
+                or self.old_characterization_factor_state != self.characterization_factor_state:
             setattr(self, attr_name, self.parent.contributions.inventory_df(
                 inventory_type=inventory)
                     )
 
         # filter the biosphere flows for the relevance to the CFs
-        if self.categorisation_filter_with_flows is not None and inventory == "biosphere":
-            self.df_biosphere = self.elementary_flows_contributing_to_IA_methods(self.categorisation_filter_with_flows, self.df_biosphere)
+        if self.characterization_factor_state is not None and inventory == "biosphere":
+            self.df_biosphere = self.elementary_flows_contributing_to_IA_methods(self.characterization_factor_state, self.df_biosphere)
 
         # filter the flows to remove those that have relevant exchanges
         def filter_zeroes(df):
