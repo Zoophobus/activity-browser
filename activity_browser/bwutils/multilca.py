@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from typing import Iterable, Optional, Union
 from PySide2.QtWidgets import QMessageBox, QApplication
+from PySide2 import QtCore
 import numpy as np
 import pandas as pd
 import brightway2 as bw
@@ -10,8 +11,8 @@ ca = ContributionAnalysis()
 
 from .commontasks import wrap_text
 from .metadata import AB_metadata
-from .errors import ReferenceFlowValueError
-
+from .errors import ReferenceFlowValueWarning
+from ..signals import signals
 
 class MLCA(object):
     """Wrapper class for performing LCA calculations with many reference flows and impact categories.
@@ -36,19 +37,15 @@ class MLCA(object):
 
     Attributes
     ----------
-    func_units_dict
     all_databases
     lca_scores_normalized
-    func_units: list
-        List of dictionaries, each containing the reference flow key and
-        its required output
     fu_activity_keys: list
         The reference flow keys
     fu_index: dict
         Links the reference flows to a specific index
     rev_fu_index: dict
         Same as `fu_index` but using the indexes as keys
-    methods: list
+    impact_methods: list
         The impact categories of the calculation setup
     method_index: dict
         Links the impact categories to a specific index
@@ -118,28 +115,41 @@ class MLCA(object):
             msg.setIcon(QMessageBox.Warning)
             QApplication.restoreOverrideCursor()
             msg.exec_()
-            raise ReferenceFlowValueError("Sum of reference flows == 0")
+            raise ReferenceFlowValueWarning("Sum of reference flows == 0")
 
         # reference flows and related indexes
-        self.func_units = cs['inv']
-        self.fu_activity_keys = [list(fu.keys())[0] for fu in self.func_units]
-        self.fu_index = {k: i for i, k in enumerate(self.fu_activity_keys)}
-        self.rev_fu_index = {v: k for k, v in self.fu_index.items()}
+        self.reference_dataframe = pd.DataFrame({
+            'reference_key': [next(iter(rf.keys())) for rf in cs['inv']],
+            'demand_value': [next(iter(rf.values())) for rf in cs['inv']],
+            'reference_name': [str(bw.get_activity(next(iter(rf.keys())))) for rf in cs['inv']],
+            'filter': [True for i in range(len(cs['inv']))],
+        })
+        self.reference_dataframe.index = pd.Index([str(i) for i in range(len(cs['inv']))])
+#        self.fu_activity_keys = [list(fu.keys())[0] for fu in self.func_units]
+#        self.fu_index = {k: i for i, k in enumerate(self.fu_activity_keys)}
+#        self.rev_fu_index = {v: k for k, v in self.fu_index.items()}
 
+        # TODO Investigate how suitable it is to have the method matrices placed in the actual dataframe
         # Methods and related indexes
-        self.methods = cs['ia']
-        self.method_index = {m: i for i, m in enumerate(self.methods)}
-        self.rev_method_index = {v: k for k, v in self.method_index.items()}
+        self.methods_dataframe = pd.DataFrame({
+            'method_name': cs['ia'],
+            'label': [', '.join(ia) for ia in cs['ia']],
+            'filter': [True for i in range(len(cs['ia']))]
+
+        })
+        self.methods_dataframe.index = pd.Index([str(i) for i in range(len(cs['ia']))])
+#        self.method_index = {m: i for i, m in enumerate(self.methods)}
+#        self.rev_method_index = {v: k for k, v in self.method_index.items()}
 
         # initial LCA and prepare method matrices
         self.lca = self._construct_lca()
         self.lca.lci(factorize=True)
         self.method_matrices = []
-        for method in self.methods:
+        for i, method in enumerate(self.methods_dataframe['method_name']):
             self.lca.switch_method(method)
             self.method_matrices.append(self.lca.characterization_matrix)
 
-        self.lca_scores = np.zeros((len(self.func_units), len(self.methods)))
+        self.lca_scores = np.zeros((self.reference_dataframe.shape[0], self.methods_dataframe.shape[0]))
 
         # data to be stored
         (self.rev_activity_dict, self.rev_product_dict, self.rev_biosphere_dict) = self.lca.reverse_dict()
@@ -148,43 +158,42 @@ class MLCA(object):
         self.scaling_factors = dict()
 
         # Technosphere product flows for a given reference flow
-        self.technosphere_flows = dict()
+        self.technosphere_flows = list()
         # Life cycle inventory (biosphere flows) by reference flow
-        self.inventory = dict()
+        self.inventory = list()
         # Inventory (biosphere flows) for specific reference flow (e.g. 2000x15000) and impact category.
         self.inventories = dict()
         # Inventory multiplied by scaling (relative impact on environment) per impact category.
         self.characterized_inventories = dict()
 
+
         # Summarized contributions for EF and processes.
         self.elementary_flow_contributions = np.zeros(
-            (len(self.func_units), len(self.methods), self.lca.biosphere_matrix.shape[0]))
+            (self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.lca.biosphere_matrix.shape[0]))
         self.process_contributions = np.zeros(
-            (len(self.func_units), len(self.methods), self.lca.technosphere_matrix.shape[0]))
+            (self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.lca.technosphere_matrix.shape[0]))
+        signals.lca_results_filter.connect(self.filter_results)
 
-        # TODO: get rid of the below
-        self.func_unit_translation_dict = {
-            str(bw.get_activity(list(func_unit.keys())[0])): func_unit for func_unit in self.func_units
-        }
-        if len(self.func_unit_translation_dict) != len(self.func_units):
-            self.func_unit_translation_dict = {}
-            for fu in self.func_units:
-                act = bw.get_activity(next(iter(fu)))
-                self.func_unit_translation_dict["{} {}".format(act, act[0])] = fu
-        self.func_key_dict = {m: i for i, m in enumerate(self.func_unit_translation_dict.keys())}
-        self.func_key_list = list(self.func_key_dict.keys())
+    def filtering_references(self):
+        return self.reference_dataframe[self.reference_dataframe['filter']]
+
+    def references(self, arg):
+        # check arg
+        # ...
+        return self.reference_dataframe[arg]
 
     def _construct_lca(self):
-        return bw.LCA(demand=self.func_units_dict, method=self.methods[0])
+        flows = {row[0]: row[1] for row in self.reference_dataframe[['reference_key', 'demand_value']].to_numpy()}
+        return bw.LCA(demand=flows, method=self.methods_dataframe.loc['0', 'method_name'])
 
     def _perform_calculations(self):
         """ Isolates the code which performs calculations to allow subclasses
         to either alter the code or redo calculations after matrix substitution.
         """
-        for row, func_unit in enumerate(self.func_units):
+        for row, ref in enumerate(self.reference_dataframe.loc[:, ['reference_key', 'demand_value']].to_numpy()):
             # Do the LCA for the current reference flow
-            self.lca.redo_lci(func_unit)
-
+            func_flow = {ref[0]: ref[1]}
+            self.lca.redo_lci(func_flow)
             # Now update the:
             # - Scaling factors
             # - Technosphere flows
@@ -192,21 +201,21 @@ class MLCA(object):
             # - Life-cycle inventory (disaggregated by contributing process)
             # for current reference flow
             self.scaling_factors.update({
-                str(func_unit): self.lca.supply_array
+                str(func_flow): self.lca.supply_array
             })
-            self.technosphere_flows.update({
-                str(func_unit): np.multiply(self.lca.supply_array, self.lca.technosphere_matrix.diagonal())
-            })
-            self.inventory.update({
-                str(func_unit): np.array(self.lca.inventory.sum(axis=1)).ravel()
-            })
+            self.technosphere_flows.append((
+                str(func_flow), np.multiply(self.lca.supply_array, self.lca.technosphere_matrix.diagonal())
+            ))
+            self.inventory.append((
+                str(func_flow), np.array(self.lca.inventory.sum(axis=1)).ravel()
+            ))
             self.inventories.update({
-                str(func_unit): self.lca.inventory
+                str(func_flow): self.lca.inventory
             })
 
             # Now, for each method, take the current reference flow and do inventory analysis
-            for col, cf_matrix in enumerate(self.method_matrices):
-                self.lca.characterization_matrix = cf_matrix
+            for col, cf in enumerate(self.method_matrices):
+                self.lca.characterization_matrix = cf
                 self.lca.lcia_calculation()
                 self.lca_scores[row, col] = self.lca.score
                 self.characterized_inventories[row, col] = self.lca.characterized_inventory.copy()
@@ -218,9 +227,16 @@ class MLCA(object):
         self._perform_calculations()
 
     @property
-    def func_units_dict(self) -> dict:
-        """Return a dictionary of reference flow (key, demand)."""
-        return {key: 1 for func_unit in self.func_units for key in func_unit}
+    def reference_flow_activities_as_list(self) -> list:
+        return list(self.reference_dataframe.loc[:, 'reference_key'])
+
+    @property
+    def reference_flow_activities_as_labels(self) -> list:
+        """Returns the reference flows in a format required for plot/figure labels"""
+        labels = []
+        for flow in self.reference_dataframe.loc[:, ['reference_key', 'reference_name']].to_numpy():
+            labels.append("{}: {}".format(flow[1], flow[0][0]))
+        return labels
 
     @property
     def all_databases(self) -> set:
@@ -232,7 +248,7 @@ class MLCA(object):
                     dbs = get_dependents(dbs.union(dep), dep)
             return dbs
 
-        databases = set(f[0] for f in self.fu_activity_keys)
+        databases = set(f[0] for f in self.reference_flow_activities_as_list)
         databases = get_dependents(databases, list(databases))
         # In rare cases, the default biosphere is not found as a dependency, see:
         # https://github.com/LCA-ActivityBrowser/activity-browser/issues/298
@@ -242,7 +258,7 @@ class MLCA(object):
 
     def get_results_for_method(self, index: int = 0) -> pd.DataFrame:
         data = self.lca_scores[:, index]
-        return pd.DataFrame(data, index=self.fu_activity_keys)
+        return pd.DataFrame(data, index=self.reference_flow_activities_as_list)
 
     @property
     def lca_scores_normalized(self) -> np.ndarray:
@@ -253,7 +269,7 @@ class MLCA(object):
     def get_normalized_scores_df(self) -> pd.DataFrame:
         """ To be used for the currently inactive CorrelationPlot.
         """
-        labels = [str(x + 1) for x in range(len(self.func_units))]
+        labels = [str(x + 1) for x in range(len(self.reference_flows))]
         return pd.DataFrame(data=self.lca_scores_normalized.T, columns=labels)
 
     def lca_scores_to_dataframe(self) -> pd.DataFrame:
@@ -262,8 +278,8 @@ class MLCA(object):
         """
         return pd.DataFrame(
             data=self.lca_scores,
-            index=pd.Index(self.fu_activity_keys),
-            columns=pd.Index(self.methods),
+            index=pd.Index(self.reference_flow_activities_as_list),
+            columns=pd.Index(self.methods_dataframe.loc[:, 'method_name']),
         )
 
     def get_all_metadata(self) -> None:
@@ -273,6 +289,13 @@ class MLCA(object):
         technosphere databases for tables and additional aggregation.
         """
         AB_metadata.add_metadata(self.all_databases)
+
+    @QtCore.Slot(int, str, name='filterResults')
+    def filter_results(self, key: int, group: str):
+        if group == 'Reference Flows':
+            self.reference_dataframe.loc[str(key), 'filter'] = not self.reference_dataframe.loc[str(key), 'filter']
+        elif group == 'Impact Assessment Methods':
+            self.methods_dataframe.loc[str(key), 'filter'] = not self.methods_dataframe.loc[str(key), 'filter']
 
 
 class Contributions(object):
@@ -330,9 +353,9 @@ class Contributions(object):
         # inventory: inventory, reverse index, metadata keys, metadata fields
         self.inventory_data = {
             "biosphere": (self.mlca.inventory, self.mlca.rev_biosphere_dict,
-                          self.mlca.fu_activity_keys, self.ef_fields),
+                          self.mlca.reference_flow_activities_as_list, self.ef_fields),
             "technosphere": (self.mlca.technosphere_flows, self.mlca.rev_activity_dict,
-                             self.mlca.fu_activity_keys, self.act_fields),
+                             self.mlca.reference_flow_activities_as_list, self.act_fields),
         }
         # aggregation: reverse index, metadata keys, metadata fields
         self.aggregate_data = {
@@ -357,7 +380,7 @@ class Contributions(object):
         scores = abs(contribution_array).sum(axis=1, keepdims=True)
         return contribution_array / scores
 
-    def _build_dict(self, C, FU_M_index, rev_dict, limit, limit_type):
+    def _build_frame(self, C, FU_M_index, rev_dict, limit, limit_type):
         """Sort the given contribution array on method or reference flow column.
 
         Parameters
@@ -382,8 +405,8 @@ class Contributions(object):
             Top-contributing flows per method or activity
 
         """
-        topcontribution_dict = dict()
-        for fu_or_method, col in FU_M_index.items():
+        topcontribution_dict = list()
+        for col, fu_or_method in enumerate(FU_M_index):
             top_contribution = ca.sort_array(C[col, :], limit=limit, limit_type=limit_type)
             cont_per = dict()
             cont_per.update({
@@ -392,7 +415,7 @@ class Contributions(object):
                 })
             for value, index in top_contribution:
                 cont_per.update({rev_dict[index]: value})
-            topcontribution_dict.update({fu_or_method: cont_per})
+            topcontribution_dict.append((fu_or_method, cont_per))
         return topcontribution_dict
 
 
@@ -436,7 +459,7 @@ class Contributions(object):
             elif k in AB_metadata.index:
                 translated_keys.append(separator.join([str(l) for l in list(AB_metadata.get_metadata(k, fields))]))
             else:
-                translated_keys.append(separator.join([i for i in k if i != '']))
+                translated_keys.append(separator.join([str(i) for i in k if i != '']))
         if max_length:
             translated_keys = [wrap_text(k, max_length=max_length) for k in translated_keys]
         return translated_keys
@@ -491,13 +514,13 @@ class Contributions(object):
         joined.index = cls.get_labels(joined.index, fields=x_fields)
         return joined
 
-    def get_labelled_contribution_dict(self, cont_dict, x_fields=None,
+    def get_labelled_contribution_frame(self, cont_list, x_fields=None,
                                        y_fields=None, mask=None):
         """Annotate the contribution dict with metadata.
 
         Parameters
         ----------
-        cont_dict : dict
+        cont_list : list[tuples]
             Holds the contribution data connected to the functions of methods
         x_fields : list
             X-axis fieldnames, these are usually the indexes/keys of specific
@@ -515,17 +538,17 @@ class Contributions(object):
 
         """
         dfs = (
-            pd.DataFrame(v.values(), index=list(v.keys()), columns=[k])
-            for k, v in cont_dict.items()
+            pd.DataFrame(s[1].values(), index=list(s[1].keys()), columns=[s[0]])
+            for s in cont_list
         )
         df = pd.concat(dfs, sort=False, axis=1)
         # If the cont_dict has tuples for keys, coerce df.columns into MultiIndex
-        if all(isinstance(k, tuple) for k in cont_dict.keys()):
+        if all(isinstance(k[0], tuple) for k in cont_list):
             df.columns = pd.MultiIndex.from_tuples(df.columns)
         special_keys = [('Total', ''), ('Rest', '')]
 
         # replace all 0 values with NaN and drop all rows with only NaNs
-        df = df.replace(0, np.nan).dropna(how='all')
+        df = df.replace(0, np.nan)#.dropna(how='all')
 
         if not mask:
             joined = self.join_df_with_metadata(
@@ -544,22 +567,21 @@ class Contributions(object):
 
         return joined.reset_index(drop=False)
 
-    @staticmethod
-    def adjust_table_unit(df: pd.DataFrame, method: Optional[tuple]) -> pd.DataFrame:
+    def adjust_table_unit(self, df: pd.DataFrame, method: Optional[tuple]) -> pd.DataFrame:
         """Given a dataframe, adjust the unit of the table to either match the
         given method, or not exist.
         """
         if "unit" not in df.columns:
             return df
         keys = df.index[~df["index"].isin({"Total", "Rest"})]
-        unit = bw.Method(method).metadata.get("unit") if method else "unit"
+        unit = bw.Method(self.mlca.methods_dataframe.loc[method, 'method_name']).metadata.get("unit") if method else "unit"
         df.loc[keys, "unit"] = unit
         return df
 
     @staticmethod
-    def _build_inventory(inventory: dict, indices: dict, columns: list,
+    def _build_inventory(inventory: list, indices: dict, columns: list,
                          fields: list) -> pd.DataFrame:
-        df = pd.DataFrame(inventory)
+        df = pd.DataFrame(list(zip(*[i[1] for i in inventory])), columns=[c[0] for c in inventory])
         df.index = pd.MultiIndex.from_tuples(indices.values())
         df.columns = Contributions.get_labels(columns, max_length=30)
         metadata = AB_metadata.get_metadata(list(indices.values()), fields)
@@ -567,11 +589,19 @@ class Contributions(object):
         joined.reset_index(inplace=True, drop=True)
         return joined
 
-    def inventory_df(self, inventory_type: str, columns: set = {'name', 'database', 'code'}):
+    def inventory_df(self, inventory_type: str, columns: set = {'name', 'database', 'code'}, reference_flows=None,
+                     methods=None, scenarios=None):
         """Returns an inventory dataframe with metadata of the given type.
         """
+        reference_flows = self.mlca.reference_dataframe[self.mlca.reference_dataframe['filter']] if reference_flows is None else reference_flows
         try:
             data = self.inventory_data[inventory_type]
+
+            acts = list()
+            inv_data = list()
+            for ref in reference_flows['reference_key']: # need to change this to
+                acts = self._filter_elements(acts, ref[0])
+                inv_data = self._filter_elements(inv_data, str(ref[0]), 0)
             appending = columns.difference(set(data[3]))
             for clmn in appending:
                 data[3].append(clmn)
@@ -580,18 +610,65 @@ class Contributions(object):
                 "Type must be either 'biosphere' or 'technosphere', "
                 "'{}' given.".format(inventory_type)
             )
-        return self._build_inventory(*data)
+        return self._build_inventory(inv_data, data[1], acts, data[3])
 
-    def _build_lca_scores_df(self, scores: np.ndarray) -> pd.DataFrame:
+    @classmethod
+    def join_scores_with_metadata(cls, df, x_fields=None, y_fields=None,
+                              index=None):
+        """Join a dataframe that has keys on the index with metadata.
+
+        Metadata fields are defined in x_fields.
+        If columns are also keys (and not, e.g. method names), they can also
+        be replaced with metadata, if y_fields are provided.
+
+        Parameters
+        ----------
+        df : `pandas.DataFrame`
+            Simple DataFrame containing processed data
+        x_fields : list
+            List of additional columns to add from the MetaDataStore
+        y_fields : list
+            List of column keys for the data in the df dataframe
+        special_keys : list
+            List of specific items to place at the top of the dataframe
+
+        Returns
+        -------
+        `pandas.DataFrame`
+            Expanded and metadata-annotated dataframe
+
+        """
+
+        # replace column keys with labels
+        df.columns = cls.get_labels(df.columns, fields=y_fields)#, separator='\n')
+
+        # get metadata for rows
+        keys = [k for k in index if k in AB_metadata.index]
+        metadata = AB_metadata.get_metadata(keys, x_fields)
+        metadata.index = pd.Index(str(i) for i in range(metadata.shape[0]))
+        # join data with metadata
+        joined = metadata.join(df, how='left')
+
+        joined.index = cls.get_labels(index, fields=x_fields)
+        return joined
+
+    def _build_lca_scores_df(self, scores: np.ndarray, **kwargs) -> pd.DataFrame:
+        methods_ = kwargs['methods']
+        references_ = kwargs['reference_flows']
+        scenarios_ = kwargs['scenarios'] if 'scenarios' in kwargs else None
+        scores_ = []
+        for r in references_.index:
+            scores_.append(scores[int(r)][[int(m) for m in methods_.index]])
         df = pd.DataFrame(
-            scores,
-            index=pd.MultiIndex.from_tuples(self.mlca.fu_activity_keys),
-            columns=self.mlca.methods
+            scores_,
+            index=pd.Index([str(i) for i in range(references_.shape[0])]),
+            columns=methods_.loc[:, 'method_name']
         )
+
         # Add amounts column.
-        df["amount"] = [next(iter(fu.values()), 1.0) for fu in self.mlca.func_units]
-        joined = Contributions.join_df_with_metadata(
-            df, x_fields=self.act_fields, y_fields=None
+        df["amount"] = [fu for fu in references_['demand_value']]
+        joined = Contributions.join_scores_with_metadata(
+            df, x_fields=self.act_fields, y_fields=None, index=list(references_.loc[:, 'reference_key'])
         )
         # Precisely order the columns that are shown in the LCA Results overview
         # tab: “X kg of product Y from activity Z in location L, and database D”
@@ -602,11 +679,11 @@ class Contributions(object):
         joined = joined.loc[:, col_order.append(methods)]
         return joined.reset_index(drop=False)
 
-    def lca_scores_df(self, normalized=False) -> pd.DataFrame:
+    def lca_scores_df(self, normalized=False, **kwargs) -> pd.DataFrame:
         """Returns a metadata-annotated DataFrame of the LCA scores.
         """
         scores = self.mlca.lca_scores if not normalized else self.mlca.lca_scores_normalized
-        return self._build_lca_scores_df(scores)
+        return self._build_lca_scores_df(scores, **kwargs)
 
     @staticmethod
     def _build_contributions(data: np.ndarray, index: int, axis: int) -> np.ndarray:
@@ -627,11 +704,11 @@ class Contributions(object):
         }
         if method:
             return self._build_contributions(
-                dataset[contribution], self.mlca.method_index[method], 1
+                dataset[contribution], int(method), 1
             )
         elif functional_unit:
             return self._build_contributions(
-                dataset[contribution], self.mlca.func_key_dict[functional_unit], 0
+                dataset[contribution], functional_unit, 0
             )
 
     def aggregate_by_parameters(self, C: np.ndarray, inventory: str,
@@ -694,20 +771,20 @@ class Contributions(object):
         mthd_indx: a list of tuples for the impact method names
         """
         method_tuple_length = max([len(k) for k in mthd_indx])
-        conv_dict = dict()
-        for v, mthd in enumerate(mthd_indx):
+        conv_frame = list()
+        for mthd in mthd_indx:
             if len(mthd) < method_tuple_length:
                 _l = list(mthd)
                 for i in range(len(mthd), method_tuple_length):
                     _l.append('')
                 mthd = tuple(_l)
-            conv_dict[mthd] = v
-        return conv_dict
+            conv_frame.append(mthd)
+        return conv_frame
 
     def _contribution_index_cols(self, **kwargs) -> (dict, Optional[Iterable]):
         if kwargs.get("method") is not None:
-            return self.mlca.fu_index, self.act_fields
-        return self._correct_method_index(self.mlca.methods), None
+            return self.mlca.reference_flow_activities_as_list, self.act_fields
+        return self._correct_method_index(self.mlca.methods_dataframe['method_name'].tolist()), None
 
     def top_elementary_flow_contributions(self, functional_unit=None, method=None,
                                           aggregator=None, limit=5, normalize=False,
@@ -740,20 +817,28 @@ class Contributions(object):
             Annotated top-contribution dataframe
 
         """
-        C = self.get_contributions(self.EF, functional_unit, method)
+        if functional_unit is None:
+            select = kwargs['reference_flows'].index
+            labels = list(kwargs['reference_flows']['reference_name'])
+        elif method is None:
+            select = kwargs['method_data'].index
+            labels = list(kwargs['method_data']['method_name'])
+        select = [int(i) for i in select]
 
+        C = self.get_contributions(self.EF, functional_unit, method)[select]
         x_fields = self._contribution_rows(self.EF, aggregator)
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
+        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
         C, rev_index, mask = self.aggregate_by_parameters(C, self.BIOS, aggregator)
 
         # Normalise if required
         if normalize:
             C = self.normalize(C)
 
-        top_cont_dict = self._build_dict(C, index, rev_index, limit, limit_type)
-        labelled_df = self.get_labelled_contribution_dict(
+        top_cont_dict = self._build_frame(C, index, rev_index, limit, limit_type)
+        labelled_df = self.get_labelled_contribution_frame(
             top_cont_dict, x_fields=x_fields, y_fields=y_fields, mask=mask
         )
         self.adjust_table_unit(labelled_df, method)
@@ -789,22 +874,39 @@ class Contributions(object):
             Annotated top-contribution dataframe
 
         """
-        C = self.get_contributions(self.ACT, functional_unit, method)
+        if functional_unit is None:
+            select = kwargs['reference_flows'].index
+            labels = list(kwargs['reference_flows']['reference_name'])
+        elif method is None:
+            select = kwargs['method_data'].index
+            labels = list(kwargs['method_data']['method_name'])
+        select = [int(i) for i in select]
+
+        C = self.get_contributions(self.ACT, functional_unit, method)[select]
 
         x_fields = self._contribution_rows(self.ACT, aggregator)
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
+        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
         C, rev_index, mask = self.aggregate_by_parameters(C, self.TECH, aggregator)
 
         # Normalise if required
         if normalize:
             C = self.normalize(C)
 
-        top_cont_dict = self._build_dict(C, index, rev_index, limit, limit_type)
-        labelled_df = self.get_labelled_contribution_dict(
+        top_cont_dict = self._build_frame(C, index, rev_index, limit, limit_type)
+        labelled_df = self.get_labelled_contribution_frame(
             top_cont_dict, x_fields=x_fields, y_fields=y_fields, mask=mask
         )
         self.adjust_table_unit(labelled_df, method)
         return labelled_df
 
+    def _filter_elements(self, container: list, key: Optional[Union[str, tuple]], level: int=None) -> None:
+        def comp(element, key):
+            if isinstance(key, tuple):
+                return key != element
+            return element.find(key) < 0
+        if level is None:
+            return [element for element in container if comp(element, key)]
+        return [element for element in container if comp(element[level], key)]

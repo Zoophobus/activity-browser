@@ -6,9 +6,13 @@ from ..bwutils import (
     SuperstructureContributions, SuperstructureMLCA,
 )
 from bw2calc.errors import BW2CalcError
-import brightway2 as bw
 
-from .errors import ReferenceFlowValueError
+
+
+# TODO Identify what are the issues with the data classes used in the calculation setup.
+# TODO [parent, for loop - like structure] Identify what the problems are with the issue?
+# TODO If the problem can't be directly resolved, what are the issues?
+# TODO ...
 
 def do_LCA_calculations(data: dict):
     """Perform the MLCA calculation."""

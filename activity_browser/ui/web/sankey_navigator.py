@@ -164,7 +164,7 @@ class SankeyNavigatorWidget(BaseNavigatorWidget):
 
     def get_scenario_labels(self) -> List[str]:
         """Get scenario labels if scenario is used."""
-        return self.parent.mlca.scenario_names if self.has_scenarios else []
+        return self.parent.mlca.scenario_dataframe['name'].to_list() if self.has_scenarios else []
 
     def configure_scenario(self):
         """Determine if scenario Qt widgets are visible or not and retrieve

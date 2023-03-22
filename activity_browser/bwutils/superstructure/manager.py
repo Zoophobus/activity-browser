@@ -128,6 +128,7 @@ class SuperstructureManager(object):
         else False, axis=1), :]
 
         list_exc = []
+        prod_indexes = []
         for idx, row in df.loc[flows_to_self.index].iterrows():
 
             prod_idx = (idx[0], idx[1], 'production')
@@ -152,6 +153,7 @@ class SuperstructureManager(object):
                 new_prod.loc[scenario_cols] = prod_amt
                 list_exc.append(new_prod)
             else:
+                prod_indexes.append(prod_idx)
                 list_exc.append(df.loc[prod_idx])
         if len(flows_to_self) > 0:
             prod_idxs = [(x[0], x[1], "production") for x in flows_to_self.index]
@@ -161,9 +163,12 @@ class SuperstructureManager(object):
             extra_df.index = prod_idxs
 
             extra_df.loc[:, scenario_cols] -= df.loc[tech_idxs, scenario_cols].values
+            extra_df.loc[:, scenario_cols] = extra_df.loc[:, scenario_cols] / (extra_df.loc[:, scenario_cols] +
+                                                                               df.loc[tech_idxs, scenario_cols].values)
 
             # drop the 'technosphere' flows
             df = df.drop(flows_to_self.index)
+            df = df.drop(prod_indexes)
             df = pd.concat([df, extra_df], axis=0)
         return df
 

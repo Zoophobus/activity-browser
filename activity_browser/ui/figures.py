@@ -73,7 +73,7 @@ class LCAResultsBarChart(Plot):
         super().__init__(parent)
         self.plot_name = 'LCA scores'
 
-    def plot(self, df: pd.DataFrame, method: tuple, labels: list):
+    def plot(self, df: pd.DataFrame, method: tuple, labels: list, **kwargs):
         self.reset_plot()
         height_inches, width_inches = self.get_canvas_size_in_inches()
         self.figure.set_size_inches(height_inches, width_inches)
@@ -103,7 +103,7 @@ class LCAResultsPlot(Plot):
         super().__init__(parent)
         self.plot_name = 'LCA heatmap'
 
-    def plot(self, df: pd.DataFrame):
+    def plot(self, df: pd.DataFrame, **kwargs):
         """ Plot a heatmap grid of the different impact categories and reference flows. """
         # need to clear the figure and add axis again
         # because of the colorbar which does not get removed by the ax.clear()
@@ -252,11 +252,11 @@ class MonteCarloPlot(Plot):
     def plot(self, df: pd.DataFrame, method: tuple):
         self.ax.clear()
 
-        for col in df.columns:
+        for col, lbl in enumerate(df.columns):
             color = self.ax._get_lines.get_next_color()
-            df[col].hist(ax=self.ax, figure=self.figure, label=col, density=True, color=color, alpha=0.5)  # , histtype="step")
+            df.iloc[:, col].hist(ax=self.ax, figure=self.figure, label=lbl, density=True, color=color, alpha=0.5)  # , histtype="step")
             # self.ax.axvline(df[col].median(), color=color)
-            self.ax.axvline(df[col].mean(), color=color)
+            self.ax.axvline(df.iloc[:, col].mean(), color=color)
 
         self.ax.set_xlabel(bw.methods[method]["unit"])
         self.ax.set_ylabel('Probability')
