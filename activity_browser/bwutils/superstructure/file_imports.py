@@ -76,6 +76,7 @@ class ABFileImporter(ABC):
             log.error(msg)
             raise e
 
+
     @staticmethod
     def na_value_check(data: pd.DataFrame, fields: list) -> None:
         """ Runs checks on the dataframe to ensure that those fields specified by the field argument do not
@@ -109,7 +110,6 @@ class ABFileImporter(ABC):
                 msg = "Error with values for the exchanges between {} and {}".format(data.loc[0,'from activity name'], data.loc[0, 'to activity name'])
                 raise ExchangeErrorValues(msg)
 
-
     @staticmethod
     def fill_nas(data: pd.DataFrame) -> pd.DataFrame:
         """ Will replace NaNs in the dataframe with a string holding "NA" for the following subsection of columns:
@@ -124,7 +124,6 @@ class ABFileImporter(ABC):
         non_bio = data.loc[data.loc[:, 'flow type'] != 'biosphere'].fillna(dict.fromkeys(not_bio_cols, 'NA'))
         bio = data.loc[data.loc[:, 'flow type'] == 'biosphere'].fillna(dict.fromkeys(bio_cols, 'NA'))
         return pd.concat([non_bio, bio])
-
 
     @staticmethod
     def all_checks(data: pd.DataFrame, fields: set = None, scenario_names: list = None) -> None:

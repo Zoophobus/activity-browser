@@ -34,13 +34,14 @@ class FilterReferencesTable(ABDataFrameView):
         Defines the use of a single mouse click within the table.
 
         """
+        idx = None
         if event.button() == QtCore.Qt.LeftButton:
             proxy = self.indexAt(event.pos())
             if proxy.column() == 3:
                 idx = proxy.row()
                 self.model.toggle(idx)
                 self.model.sync()
-        signals.lca_results_filter.emit(idx, "Reference Flows")
+                signals.lca_results_filter.emit(idx, "Reference Flows")
 
 class FilterMethodsTable(ABDataFrameView):
     """
@@ -72,11 +73,11 @@ class FilterMethodsTable(ABDataFrameView):
         """
         if event.button() == QtCore.Qt.LeftButton:
             proxy = self.indexAt(event.pos())
-            if proxy.column() == 3:
+            if proxy.column() == 1:
                 idx = proxy.row()
                 self.model.toggle(idx)
                 self.model.sync()
-        signals.lca_results_filter.emit(idx, "Impact Assessment Methods")
+                signals.lca_results_filter.emit(idx, "Impact Assessment Methods")
 
 
 class FilterScenariosTable(ABDataFrameView):
@@ -109,8 +110,8 @@ class FilterScenariosTable(ABDataFrameView):
         """
         if event.button() == QtCore.Qt.LeftButton:
             proxy = self.indexAt(event.pos())
-            if proxy.column() == 3:
+            if proxy.column() == 1:
                 idx = proxy.row()
                 self.model.toggle(idx)
                 self.model.sync()
-        signals.lca_results_filter.emit(idx, "Scenarios")
+                signals.lca_results_filter.emit(idx, "Scenarios")

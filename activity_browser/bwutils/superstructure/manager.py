@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import itertools
-from typing import List
+from typing import List, Optional, Union
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_numeric_dtype, is_number
@@ -75,8 +75,8 @@ class SuperstructureManager(object):
             return pd.DataFrame(
                 data=df.loc[:, cols], index=df.index, columns=cols
             )
-        combo_idx = self._combine_indexes()
 
+        combo_idx = self._combine_indexes()
         if kind == "product":
             combo_cols = self._combine_columns()
             df = SuperstructureManager.product_combine_frames(
@@ -146,9 +146,11 @@ class SuperstructureManager(object):
     def _combine_indexes(self) -> pd.MultiIndex:
         """Returns a union of all of the given dataframe indexes."""
         iterable = iter(self.frames)
-        idx = next(iterable).index
+        df = next(iterable)
+        # If the keys point to the same flow (e.g. self referential) then check that it's not a technosphere activity
+        idx = df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index
         for df in iterable:
-            idx = idx.union(df.index)
+            idx = idx.union(df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index)
         return idx
 
     @staticmethod
@@ -238,8 +240,6 @@ class SuperstructureManager(object):
         if not isinstance(df.index, pd.MultiIndex):
             df.index = SuperstructureManager.build_index(df)
         # all import checks should take place before merge_flows_to_self
-#        df = SuperstructureManager.check_duplicates(df)
-#        df = SuperstructureManager.merge_flows_to_self(df)
 
         return df
 
@@ -305,15 +305,17 @@ class SuperstructureManager(object):
         return df
 
     @staticmethod
-    def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    def remove_duplicates(df: Optional[Union[pd.DataFrame, list]]) -> pd.DataFrame:
         """Using the input/output index for a superstructure, drop duplicates
         where the last instance survives.
         """
-        duplicates = df.index.duplicated(keep="last")
+        # Drop the duplicates for a single dataframe
+        duplicates = df.index.duplicated(keep='last')
         if duplicates.any():
             log.warning("Found and dropped {} duplicate exchanges.".format(duplicates.sum()))
             return df.loc[~duplicates, :]
         return df
+
 
     @staticmethod
     def build_index(df: pd.DataFrame) -> pd.MultiIndex:
