@@ -964,8 +964,6 @@ class ContributionTab(NewAnalysisTab):
         self.combobox_menu.method.setHidden(active)
         self.combobox_menu.method_label.setHidden(active)
 
-    # TODO Convert the following to use the currentIndex() method of the ComboBox
-    # TODO this can then be used to collect the correct Reference flows and IAMs
     @QtCore.Slot(name="comboboxTriggerUpdate")
     def set_combobox_changes(self, **kwargs):
         """Update fields based on user-made changes in combobox.
@@ -974,6 +972,9 @@ class ContributionTab(NewAnalysisTab):
         combobox objects to be read out (which comparison, drop-down indexes,
         etc.) and fed into update calls.
         """
+        # TODO This is currently failing when triggered by the relative/absolute checkboxes.
+        # TODO It needs to be checked whether this can return to the previous mechanism of using
+        # TODO the inputs from the menuboxes, so that this works when other toggles are used
         if self.combobox_menu.agg.currentText() != 'none':
             compare_fields = {"aggregator": self.combobox_menu.agg.currentText()}
         else:
