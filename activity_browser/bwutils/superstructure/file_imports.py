@@ -21,9 +21,10 @@ class ABPopup(QMessageBox):
         self.message = None
 
     def dataframe(self, data: pd.DataFrame, columns: list = None):
+        # TODO The index for the dataframe is not consistently either an integer or tuple
         self.data_frame = data
         self.data_frame = self.data_frame.loc[:, columns]
-        self.data_frame.index = self.data_frame.index.astype(str)
+        self.data_frame.index = pd.Index([str(i) for i in self.data_frame.index])
 #        for column in columns:
 #            self.data_frame[column] = pd.Series(self.data_frame[column].values.flatten())
 
@@ -40,7 +41,7 @@ class ABPopup(QMessageBox):
         conversion = conversion + '\n'
         #writes out the table body
         for row in self.data_frame.index:
-            conversion = conversion + row
+            conversion = conversion + str(row)
             for column in self.data_frame.columns:
                 conversion = conversion + separator(str(self.data_frame.loc[row, column]))
             conversion = conversion + '\n'
@@ -138,6 +139,7 @@ class ABFileImporter(ABC):
             print(msg)
             raise e
 
+
     @staticmethod
     def na_value_check(data: pd.DataFrame, fields: list) -> None:
         """ Runs checks on the dataframe to ensure that those fields specified by the field argument do not
@@ -170,27 +172,80 @@ class ABFileImporter(ABC):
                 msg = "Error with values for the exchanges between {} and {}".format(data.loc[0,'from activity name'], data.loc[0, 'to activity name'])
                 raise ExchangeErrorValues(msg)
 
+    # TODO redesign this around an internal class:
+    # TODO Duplicate process creates an object
+    # TODO that will run through the appropriate tests
+    # TODO Use abstract base classes (abc, ABC and abstractmethod - decorator).
+    # TODO to common interfaces for all classes, for import
     @staticmethod
-    def check_duplicates(data: pd.DataFrame, index: list=['to key', 'from key', 'flow type']) -> pd.DataFrame:
+    def check_duplicates(data: Optional[Union[pd.DataFrame, list]], index: list=['to key', 'from key', 'flow type']):
         """
         Checks three fields to identify whether a scenario difference file contains duplicate exchanges:
         'from key', 'to key' and 'flow type'
         Produces a warning
         """
-        duplicates = data.duplicated(index, keep=False)
+        if isinstance(data, pd.DataFrame):
+            ABFileImporter._check_duplicate(data, index)
+        else:
+            # Each time the frames are gathered into a list
+            # and we are always checking the last file
+            # So only comparisons with the last file are required
+            # TODO Needs to go through each dataframe and drop duplicates
+            # TODO Not across all dataframes
+            count = 1
+            df = data[-count]
+            duplicated = {}
+            while count < len(data):
+                count += 1
+                popped = data[-count]
+                duplicates = ABFileImporter._check_duplicates(df, popped)
+                if not duplicates.empty:
+                    duplicated[count] = duplicates
+            if duplicated:
+                warning = ABPopup()
+                msg = """
+                    Duplicates have been found in the provided files. The Activity Browser cannot handle duplicate entries in the scenario files. Duplicate entries are discarded, only the last found instance of a duplicated entry will be used.
+                
+                    Click 'Ok' to proceed, otherwise press 'Cancel'
+                """
+                for file, frame in duplicated.items():
+                    frame.insert(0, 'File', file, allow_duplicates=True)
+                warning.dataframe(pd.concat([file for file in duplicated.values()]), index)
+                response = warning.abWarning('Duplicate flow exchanges', msg, QMessageBox.Ok, QMessageBox.Cancel)
+                if response == warning.Cancel:
+                    return None
+            return data
+    @staticmethod
+    def _check_duplicates(dfp: pd.DataFrame, pdf: pd.DataFrame, index: list=['to key', 'from key', 'flow type']) -> pd.DataFrame:
+        # First save the original index and create a new one that can help the user identify problems in their files
+        d_idx = dfp.index
+        dfp.index = pd.Index([str(i) for i in range(pdf.shape[0])])
+        p_idx = pdf.index
+        pdf.index = pd.Index([str(i) for i in range(pdf.shape[0])])
+        df = pd.concat([dfp,pdf], ignore_index=True)
+        dfp.index = d_idx
+        pdf.index = p_idx
+        dfp.drop_duplicates(index, keep='last', inplace=True)
+#        pdf.drop_duplicates(index, keep='last', inplace=True)
+        return df.loc[df.duplicated(index, keep=False)]
+
+    @staticmethod
+    def _check_duplicate(data: pd.DataFrame, index: list=['to key', 'from key', 'flow type']) -> pd.DataFrame:
+        df = data.copy()
+        df.index = pd.Index([str(i) for i in range(df.shape[0])])
+        duplicates = df.duplicated(index, keep=False)
         if duplicates.any():
             warning = ABPopup()
             msg = """
             Duplicates have been found in the provided file. The Activity Browser cannot handle duplicate entries in the scenario files. Duplicate entries are discarded, only the last found instance of a duplicated entry will be used.
             
-            If you want to proceed without changing the file contents please press 'ok', otherwise press 'cancel'.
+            Click 'ok' to proceed, otherwise press 'cancel'.
             """
-            warning.dataframe(data.loc[duplicates], index)
+            warning.dataframe(df.loc[duplicates], index)
             response = warning.abWarning('Duplicate flow exchanges', msg, QMessageBox.Ok, QMessageBox.Cancel)
             if response == warning.Cancel:
-                return None
-            return data.drop_duplicates(index, keep='last', inplace=False)
-        return data
+                return
+            data.drop_duplicates(index, keep='last', inplace=True)
 
     @staticmethod
     def fill_nas(data: pd.DataFrame) -> pd.DataFrame:

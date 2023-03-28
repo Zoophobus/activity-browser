@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import itertools
-from typing import List
+from typing import List, Optional, Union
 import numpy as np
 import time
 import pandas as pd
@@ -25,7 +25,7 @@ class SuperstructureManager(object):
         ] + [SuperstructureManager.format_dataframe(f) for f in dfs]
         self.is_multiple = len(self.frames) > 1
 
-    def combined_data(self, kind: str = "product", check_duplicates = None) -> pd.DataFrame:
+    def combined_data(self, kind: str = "product", check_duplicates = None, skip_checks: bool=False) -> pd.DataFrame:
         """Combines multiple superstructures using a specific kind of logic.
 
         Currently implemented: 'product' creates an outer-product combination
@@ -39,12 +39,17 @@ class SuperstructureManager(object):
         """
         if not self.is_multiple:
             df = next(iter(self.frames))
+            if skip_checks:
+                df = SuperstructureManager.remove_duplicates(df)
+            elif check_duplicates:
+                check_duplicates(df)
             cols = scenario_columns(df)
+            df = SuperstructureManager.merge_flows_to_self(df)
             return pd.DataFrame(
                 data=df.loc[:, cols], index=df.index, columns=cols
             )
-        combo_idx = self._combine_indexes()
 
+        combo_idx = self._combine_indexes()
         if kind == "product":
             combo_cols = self._combine_columns()
             df = SuperstructureManager.product_combine_frames(
@@ -56,13 +61,10 @@ class SuperstructureManager(object):
             # Find the intersection subset of scenarios.
             cols = self._combine_columns_intersect()
             df = SuperstructureManager.addition_combine_frames(
-                self.frames, combo_idx, cols
+                self.frames, combo_idx, cols, check_duplicates, skip_checks
             )
-            if check_duplicates is not None:
-                df = check_duplicates(df)
         else:
             df = pd.DataFrame([], index=combo_idx)
-
         return df
 
     def _combine_columns(self) -> pd.MultiIndex:
@@ -79,9 +81,11 @@ class SuperstructureManager(object):
     def _combine_indexes(self) -> pd.MultiIndex:
         """Returns a union of all of the given dataframe indexes."""
         iterable = iter(self.frames)
-        idx = next(iterable).index
+        df = next(iterable)
+        # If the keys point to the same flow (e.g. self referential) then check that it's not a technosphere activity
+        idx = df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index
         for df in iterable:
-            idx = idx.union(df.index)
+            idx = idx.union(df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index)
         return idx
 
     @staticmethod
@@ -92,18 +96,27 @@ class SuperstructureManager(object):
         """
         df = pd.DataFrame([], index=index, columns=cols)
         for idx, f in enumerate(data):
+            f = SuperstructureManager.remove_duplicates(f)
+            f = SuperstructureManager.merge_flows_to_self(f)
             data = f.loc[:, cols.get_level_values(idx)]
             data.columns = cols
             df.loc[data.index, :] = data
         return df
 
     @staticmethod
-    def addition_combine_frames(data: List[pd.DataFrame], index: pd.MultiIndex, cols: pd.Index) -> pd.DataFrame:
+    def addition_combine_frames(data: List[pd.DataFrame], index: pd.MultiIndex, cols: pd.Index, check_duplicates, skip_checks) -> pd.DataFrame:
         df = pd.DataFrame([], index=index, columns=cols)
-        for f in data:
-            data = f.loc[:, cols]
-            df.loc[data.index, :] = data
-        return df
+        if not skip_checks and check_duplicates:
+            check_duplicates(data)
+            for f in data:
+                df[f.columns] = f
+        else:
+            for f in data:
+                if skip_checks:
+                    f = SuperstructureManager.remove_duplicates(f)
+                df[f.columns] = f
+        df = SuperstructureManager.merge_flows_to_self(df)
+        return df.loc[:, cols]
 
     @staticmethod
     def format_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -112,8 +125,8 @@ class SuperstructureManager(object):
         """
         if not isinstance(df.index, pd.MultiIndex):
             df.index = SuperstructureManager.build_index(df)
-        df = SuperstructureManager.remove_duplicates(df)
-        df = SuperstructureManager.merge_flows_to_self(df)
+#        df = SuperstructureManager.remove_duplicates(df)
+#        df = SuperstructureManager.merge_flows_to_self(df)
 
         return df
 
@@ -174,15 +187,17 @@ class SuperstructureManager(object):
         return df
 
     @staticmethod
-    def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    def remove_duplicates(df: Optional[Union[pd.DataFrame, list]]) -> pd.DataFrame:
         """Using the input/output index for a superstructure, drop duplicates
         where the last instance survives.
         """
-        duplicates = df.index.duplicated(keep="last")
+        # Drop the duplicates for a single dataframe
+        duplicates = df.index.duplicated(keep='last')
         if duplicates.any():
             print("Found and dropped {} duplicate exchanges.".format(duplicates.sum()))
             return df.loc[~duplicates, :]
         return df
+
 
     @staticmethod
     def build_index(df: pd.DataFrame) -> pd.MultiIndex:

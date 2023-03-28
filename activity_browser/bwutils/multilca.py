@@ -590,7 +590,7 @@ class Contributions(object):
         return joined
 
     def inventory_df(self, inventory_type: str, columns: set = {'name', 'database', 'code'}, reference_flows=None,
-                     methods=None, scenarios=None):
+                     methods=None, scenarios=None, total=1):
         """Returns an inventory dataframe with metadata of the given type.
         """
         reference_flows = self.mlca.reference_dataframe[self.mlca.reference_dataframe['filter']] if reference_flows is None else reference_flows
@@ -599,9 +599,10 @@ class Contributions(object):
 
             acts = list()
             inv_data = list()
-            for ref in reference_flows['reference_key']: # need to change this to
-                acts = self._filter_elements(acts, ref[0])
-                inv_data = self._filter_elements(inv_data, str(ref[0]), 0)
+            for ref in reference_flows[reference_flows['filter']].index: # need to change this to
+                acts.append(reference_flows.loc[ref, 'reference_key'])
+                for i in range(total):
+                    inv_data.append(data[0][(i*self.mlca.reference_dataframe.shape[0]) + int(ref)])
             appending = columns.difference(set(data[3]))
             for clmn in appending:
                 data[3].append(clmn)

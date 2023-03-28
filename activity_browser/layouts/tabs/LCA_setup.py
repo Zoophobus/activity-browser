@@ -336,7 +336,7 @@ class ScenarioImportPanel(BaseRightTab):
             return []
         return scenario_names_from_df(self.tables[idx])
 
-    def combined_dataframe(self) -> pd.DataFrame:
+    def combined_dataframe(self, skip_checks: bool = False) -> pd.DataFrame:
         """Return a dataframe that combines the scenarios of multiple tables.
         """
         if not self.tables:
@@ -353,7 +353,7 @@ class ScenarioImportPanel(BaseRightTab):
             kind = "addition"
         else:
             kind = "none"
-        self._scenario_dataframe = manager.combined_data(kind, ABFileImporter.check_duplicates)
+        self._scenario_dataframe = manager.combined_data(kind, ABFileImporter.check_duplicates, skip_checks)
 
     @Slot(name="addTable")
     def add_table(self) -> None:
@@ -362,7 +362,7 @@ class ScenarioImportPanel(BaseRightTab):
         self.tables.append(widget)
         self.scenario_tables.addWidget(widget)
         self.updateGeometry()
-        self.combined_dataframe()
+ #       self.combined_dataframe()
 
     @Slot(int, name="removeTable")
     def remove_table(self, idx: int) -> None:
@@ -373,7 +373,7 @@ class ScenarioImportPanel(BaseRightTab):
         # Do not forget to update indexes!
         for i, w in enumerate(self.tables):
             w.index = i
-        self.combined_dataframe()
+        self.combined_dataframe(skip_checks=True)
 
     @Slot(name="clearTables")
     def clear_tables(self) -> None:
@@ -466,7 +466,7 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                 else:
                     df = ABCSVImporter.read_file(path, separator=separator)
 #                    ABCSVImporter.all_checks(df, ABCSVImporter.ABScenarioColumnsErrorIfNA, ABCSVImporter.scenario_names(df))
-                df = ABFileImporter.check_duplicates(df)
+#                df = ABFileImporter.check_duplicates(df)
                 if df is None:
                     QtWidgets.QApplication.restoreOverrideCursor()
                     return

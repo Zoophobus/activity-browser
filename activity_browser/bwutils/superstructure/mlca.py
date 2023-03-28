@@ -71,7 +71,7 @@ class SuperstructureMLCA(MLCA):
             self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.total,
             self.lca.technosphere_matrix.shape[0]
         ))
-        signals.lca_results_filter.connect(self.filter_results)
+#        signals.lca_results_filter.connect(self.filter_results)
 
     @property
     def current(self) -> int:
@@ -237,6 +237,7 @@ class SuperstructureMLCA(MLCA):
     def filter_results(self, key: int, group: str):
         if group == 'Scenarios':
             self.scenario_dataframe[key, 'filter'] = not self.scenario_dataframe[key, 'filter']
+        super().filter_results(key, group)
 
 
 class SuperstructureContributions(Contributions):
@@ -249,6 +250,7 @@ class SuperstructureContributions(Contributions):
 
     def _build_inventory(self, inventory: list, indices: dict, columns: list,
                          fields: list) -> pd.DataFrame:
+
         inventory = [(next(iter(v.keys()))[0], next(iter(v.values()))) for v in inventory
                      if next(iter(v.keys()))[1] == self.mlca.current]
         return super()._build_inventory(inventory, indices, columns, fields)
@@ -417,3 +419,12 @@ class SuperstructureContributions(Contributions):
         )
         self.adjust_table_unit(labelled_df, method)
         return labelled_df
+
+    def inventory_df(self, inventory_type: str, columns: set = {'name', 'database', 'code'}, reference_flows=None,
+                     methods=None, scenarios=None):
+        """
+        Superscedes the Contributions method to provide an additional argument for iterating through
+        the scenario data, required for the filtering procedures introduced within the results tabs
+        """
+        return super().inventory_df(inventory_type=inventory_type, columns=columns, reference_flows=reference_flows,
+                             methods=methods, scenarios=scenarios, total=self.mlca.total)

@@ -386,18 +386,21 @@ class ResultSetupTab(QWidget):
         button_box.addStretch(1)
         self.layout = QVBoxLayout()
         self.layout.addLayout(button_box)
-        self.layout.addStretch(1)
+#        self.layout.addStretch(1)
         self.layout.addWidget(header("Reference Flows:"))
         self.layout.addWidget(self.reference_flow_table)
-        self.layout.addStretch(1)
+#        self.layout.addStretch(1)
         self.layout.addWidget(header("Impact Assessment Methods:"))
         self.layout.addWidget(self.impact_category_table)
-        self.layout.addStretch(1)
+
         if self.parent.has_scenarios:
             self.scenario_table = FilterScenariosTable(self)
             self.layout.addWidget(header("Scenarios:"))
             self.layout.addWidget(self.scenario_table)
             self.layout.addStretch(1)
+        else:
+            self.layout.addStretch(1)
+
         self.setLayout(self.layout)
         self.filter_button.clicked.connect(lambda: signals.update_lca_results.emit())
 
