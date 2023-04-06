@@ -15,10 +15,11 @@ class ABPopup(QMessageBox):
     """
     Holds AB defined message boxes to enable a more consistent popup message structure
     """
-    def __init__(self, parent=None, title: str = None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.data_frame = None
         self.message = None
+        self.topic = None
 
     def dataframe(self, data: pd.DataFrame, columns: list = None):
         self.data_frame = data

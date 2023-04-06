@@ -27,6 +27,7 @@ if QSysInfo.productType() in ["arch","nixos"]:
 
 def run_activity_browser():
     qapp = QApplication(sys.argv)
+
     # qapp.setFont(default_font)
 #    qapp.setStyleSheet(
 #        '''
