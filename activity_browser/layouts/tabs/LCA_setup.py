@@ -536,6 +536,9 @@ class ScenarioImportWidget(QtWidgets.QWidget):
     def sync_superstructure(self, df: pd.DataFrame) -> None:
         # TODO: Move the 'scenario_df' into the model itself.
         df = self.scenario_db_check(df)
+        # If we've cancelled the import then we don't want to load the dataframe
+        if df.empty:
+            return
         self.scenario_df = df
         cols = scenario_names_from_df(self.scenario_df)
         self.table.model.sync(cols)

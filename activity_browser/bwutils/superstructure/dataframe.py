@@ -76,6 +76,7 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
     either be terminated, or can proceed without replacement of those activities not identified (the unidentified
     database names in these instances will be retained)
 
+    df_
     """
     df = df_.copy(True)
     FROM_FIELDS = pd.Index([
@@ -86,6 +87,9 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
                           "to reference product", "to location"
     ])
     FILTER_FIELDS = ['name', 'categories', 'reference product', 'location']
+    critical = {'from database': [], 'from activity name': [], 'to database': [], 'to activity name': []}  # To be used in the exchange_replace_database internal method scope
+    # this variable will accumulate the activity names and databases for the activities in both
+    # directions
 
     # TODO the following method can be removed on updating to bw2.5
     def filter(_activity, values, fields):
@@ -106,12 +110,11 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
             except (KeyError, IndexError) as e:
                 pass
         return 1
-    def exchange_replace_database(ds: pd.Series, replacements: dict) -> tuple:
+    def exchange_replace_database(ds: pd.Series, replacements: dict, critical: list) -> tuple:
         """  For a row in the scenario dataframe check the databases involved for whether replacement is required.
             If so use the key-value pair within the replacements dictionary to replace the dictionary names
             and obtain the correct activity key
         """
-        critical = list()
         for i, fields in enumerate([FROM_FIELDS, TO_FIELDS]):
             db_name = ds[['from database', 'to database'][i]]
             if db_name not in replacements.keys():
@@ -120,20 +123,32 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
              #TODO update this following section to use get_node from bw2data.utils when updating to bw2.5
             activities = db.search(ds[fields[0]])
             if not activities:
- #               critical = ABPopup()
- #               msg = f"An activity from {db_name} could not be located in {replacements[db_name]}. The activity from {db_name} will be retained if you wish to proceed (press ok), otherwise press cancel"
- #               response = critical.abCritical("Activity not found", msg, QMessageBox.Ok, QMessageBox.Cancel)
- #               if critical.Cancel == response:
- #                   raise Exception()
-                break
+                if len(critical) <= 5:
+                    critical['from database'].append(ds['from database'])
+                    critical['from activity name'].append(ds['from activity name'])
+                    critical['to database'].append(ds['to database'])
+                    critical['to activity name'].append(ds['to activity name'])
             filtered = [act for act in activities if filter(act, ds, fields)]
             if len(filtered) > 0:
                 for j, col in enumerate([['from key', 'from database'], ['to key', 'to database']][i]):
                     ds[col] = (filtered[0]['database'], filtered[0]['code']) if j == 0 else filtered[0]['database']
         return ds
     # Code for scenario_replace_dataframe
-    try:
-        df = df.apply(lambda row: exchange_replace_database(row, replacements), axis=1)
-    except:
-        return
+    df = df.apply(lambda row: exchange_replace_database(row, replacements, critical), axis=1)
+    if critical['from database']:
+        critical_message = ABPopup()
+        critical_message.dataframe(pd.DataFrame(critical),
+                                       ['from database', 'from activity name', 'to database', 'to activity name'])
+        if len(critical['from database']) > 1:
+            msg = f"Multiple activities in the exchange flows could not be linked. The first five of these are provided.\n\n" \
+                  f"If you want to proceed with the import then press 'Ok' (doing so will enable you to save the dataframe\n" \
+                  f"to either .csv, or .xlsx formats), otherwise press 'Cancel'"
+            response = critical_message.abCritical("Activities not found", msg, QMessageBox.Ok, QMessageBox.Cancel, default=2)
+        else:
+            msg = f"An activity in the exchange flows could not been linked (See below for the activity).\n\nIf you want to" \
+                  f"proceed with the import then press 'Ok' (doing so will enable you to save the dataframe to\n either .csv," \
+                  f"or .xlsx formats), otherwise press 'Cancel'"
+            response = critical_message.abCritical("Activity not found", msg, QMessageBox.Ok, QMessageBox.Cancel, default=2)
+        if response == critical_message.Cancel:
+            return pd.DataFrame({}, columns=df.columns)
     return df
