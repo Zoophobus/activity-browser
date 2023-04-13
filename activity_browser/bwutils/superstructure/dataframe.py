@@ -76,7 +76,13 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
     either be terminated, or can proceed without replacement of those activities not identified (the unidentified
     database names in these instances will be retained)
 
-    df_
+    Parameters
+    ----------
+
+    df_ : the dataframe that is produced from the supplied scenario files provided to the AB
+
+    replacements : a dictionary of key-value pairs where the key corresponds to the database in the supplied dataframe
+            and the value corresponds to the respective database in the local brightway environment
     """
     df = df_.copy(True)
     FROM_FIELDS = pd.Index([
@@ -98,7 +104,7 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
         """
         for i in range(len(FILTER_FIELDS)):
             try:
-                # first do we need to check all the elements in a tuple
+                # first do we need to check all the elements in the categories tuple
                 if FILTER_FIELDS[i] == 'categories' and _activity['categories']:
                     value = values[fields[i]]
                     for j, c in enumerate(value[1: -1].split(', ') if isinstance(value, str) else enumerate(value)):
@@ -117,11 +123,13 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
         """
         for i, fields in enumerate([FROM_FIELDS, TO_FIELDS]):
             db_name = ds[['from database', 'to database'][i]]
+            # check to see whether we can skip the activity, or not
             if db_name not in replacements.keys():
                 continue
             db = bw.Database(replacements[db_name])
              #TODO update this following section to use get_node from bw2data.utils when updating to bw2.5
             activities = db.search(ds[fields[0]])
+            # if we can't link the activity then we
             if not activities:
                 if len(critical) <= 5:
                     critical['from database'].append(ds['from database'])
@@ -129,12 +137,14 @@ def scenario_replace_databases(df_: pd.DataFrame, replacements: dict) -> pd.Data
                     critical['to database'].append(ds['to database'])
                     critical['to activity name'].append(ds['to activity name'])
             filtered = [act for act in activities if filter(act, ds, fields)]
+            # check whether there is an activity to be replaced
             if len(filtered) > 0:
                 for j, col in enumerate([['from key', 'from database'], ['to key', 'to database']][i]):
                     ds[col] = (filtered[0]['database'], filtered[0]['code']) if j == 0 else filtered[0]['database']
         return ds
-    # Code for scenario_replace_dataframe
+    # actual replacement of the activities in the main method
     df = df.apply(lambda row: exchange_replace_database(row, replacements, critical), axis=1)
+    # prepare a warning message in case unlinkable activities were found in the scenario dataframe
     if critical['from database']:
         critical_message = ABPopup()
         critical_message.dataframe(pd.DataFrame(critical),
