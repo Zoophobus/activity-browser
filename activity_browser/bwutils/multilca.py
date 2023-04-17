@@ -236,13 +236,13 @@ class MLCA(object):
 
     @property
     def reference_flow_activities_as_list(self) -> list:
-        return list(self.reference_dataframe.loc[:, 'reference_key'])
+        return list(self.reference_dataframe.loc[self.reference_dataframe['filter'], 'reference_key'])
 
     @property
     def reference_flow_activities_as_labels(self) -> list:
         """Returns the reference flows in a format required for plot/figure labels"""
         labels = []
-        for flow in self.reference_dataframe.loc[:, ['reference_key', 'reference_name']].to_numpy():
+        for flow in self.reference_dataframe.loc[self.reference_dataframe['filter'], ['reference_key', 'reference_name']].to_numpy():
             labels.append("{}: {}".format(flow[1], flow[0][0]))
         return labels
 
@@ -264,8 +264,10 @@ class MLCA(object):
         databases.add(bw.config.biosphere)
         return databases
 
-    def get_results_for_method(self, index: int = 0) -> pd.DataFrame:
-        data = self.lca_scores[:, index]
+    def get_results_for_method(self, index: int = 0, **kwargs) -> pd.DataFrame:
+        data = self.lca_scores[
+            [int(i) for i in kwargs['reference_flows'].index],
+            index]
         return pd.DataFrame(data, index=self.reference_flow_activities_as_list)
 
     @property
@@ -604,16 +606,18 @@ class Contributions(object):
                      methods=None, scenarios=None, total=1):
         """Returns an inventory dataframe with metadata of the given type.
         """
-        reference_flows = self.mlca.reference_dataframe[self.mlca.reference_dataframe['filter']] if reference_flows is None else reference_flows
         try:
             data = self.inventory_data[inventory_type]
 
             acts = list()
             inv_data = list()
-            for ref in reference_flows[reference_flows['filter']].index: # need to change this to
+            for ref in reference_flows.index:
                 acts.append(reference_flows.loc[ref, 'reference_key'])
-                for i in range(total):
-                    inv_data.append(data[0][(i*self.mlca.reference_dataframe.shape[0]) + int(ref)])
+                if scenarios is not None:
+                    for i in scenarios.index.to_list():
+                        inv_data.append(data[0][(int(i)*self.mlca.reference_dataframe.shape[0]) + int(ref)])
+                else: # we don't have scenarios to include
+                    inv_data.append(data[0][int(ref)])
             appending = columns.difference(set(data[3]))
             for clmn in appending:
                 data[3].append(clmn)
@@ -698,11 +702,11 @@ class Contributions(object):
         return self._build_lca_scores_df(scores, **kwargs)
 
     @staticmethod
-    def _build_contributions(data: np.ndarray, index: int, axis: int) -> np.ndarray:
+    def _build_contributions(data: np.ndarray, index: int, axis: int, scenario: int=None) -> np.ndarray:
         return data.take(index, axis=axis)
 
     def get_contributions(self, contribution, functional_unit=None,
-                          method=None) -> np.ndarray:
+                          method=None, scenario=None) -> np.ndarray:
         """Return a contribution matrix given the type and fu / method
         """
         if all([functional_unit, method]) or not any([functional_unit, method]):
@@ -714,13 +718,15 @@ class Contributions(object):
             'process': self.mlca.process_contributions,
             'elementary_flow': self.mlca.elementary_flow_contributions,
         }
+        if scenario: # Check to see if scenarios are being used, otherwise we can pass None
+            scenario = int(scenario)
         if method:
             return self._build_contributions(
-                dataset[contribution], int(method), 1
+                dataset[contribution], int(method), 1, scenario
             )
         elif functional_unit:
             return self._build_contributions(
-                dataset[contribution], functional_unit, 0
+                dataset[contribution], int(functional_unit), 0, scenario
             )
 
     def aggregate_by_parameters(self, C: np.ndarray, inventory: str,

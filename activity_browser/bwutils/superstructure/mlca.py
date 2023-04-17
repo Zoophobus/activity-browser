@@ -213,13 +213,17 @@ class SuperstructureMLCA(MLCA):
         self.lca.lcia_calculation()
         self.lca.decompose_technosphere()
 
-    def get_results_for_method(self, index: int = 0) -> pd.DataFrame:
+    def get_results_for_method(self, index: int = 0, **kwargs) -> pd.DataFrame:
         """ Overrides the parent and returns a dataframe with the scenarios
          as columns
         """
+        act_idx = [int(i) for i in kwargs['reference_flows'].index.to_list()]
+        scn_idx = [int(i) for i in kwargs['scenarios'].index.to_list()]
         data = self.lca_scores[:, index, :]
+        data = data[act_idx, :]
+        data = data[:, scn_idx]
         return pd.DataFrame(
-            data, index=self.reference_flow_activities_as_list, columns=self.scenario_dataframe['name'].to_list()
+            data, index=self.reference_flow_activities_as_list, columns=kwargs['scenarios']['name'].to_list()
         )
 
     def _get_steps_to_index(self, index: int) -> list:
@@ -266,7 +270,7 @@ class SuperstructureMLCA(MLCA):
     @QtCore.Slot(int, str, name="filterResults")
     def filter_results(self, key: int, group: str):
         if group == 'Scenarios':
-            self.scenario_dataframe[key, 'filter'] = not self.scenario_dataframe[key, 'filter']
+            self.scenario_dataframe.loc[str(key), 'filter'] = not self.scenario_dataframe.loc[str(key), 'filter']
         super().filter_results(key, group)
 
 
@@ -281,9 +285,9 @@ class SuperstructureContributions(Contributions):
     def _build_inventory(self, inventory: list, indices: dict, columns: list,
                          fields: list) -> pd.DataFrame:
 
-        inventory = [(next(iter(v.keys()))[0], next(iter(v.values()))) for v in inventory
+        inventory_ = [(next(iter(v.keys()))[0], next(iter(v.values()))) for v in inventory
                      if next(iter(v.keys()))[1] == self.mlca.current]
-        return super()._build_inventory(inventory, indices, columns, fields)
+        return super()._build_inventory(inventory_, indices, columns, fields)
 
     def lca_scores_df(self, normalized: bool = False, **kwargs) -> pd.DataFrame:
         """Returns a metadata-annotated DataFrame of the LCA scores.
@@ -292,8 +296,8 @@ class SuperstructureContributions(Contributions):
         scores = scores[:, :, self.mlca.current]
         return self._build_lca_scores_df(scores, **kwargs)
 
-    def _build_contributions(self, data: np.ndarray, index: int, axis: int) -> np.ndarray:
-        data = data[:, :, self.mlca.current]
+    def _build_contributions(self, data: np.ndarray, index: int, axis: int, scenario: int) -> np.ndarray:
+        data = data[:, :, scenario]
         return super()._build_contributions(data, index, axis)
 
     @staticmethod
@@ -301,7 +305,7 @@ class SuperstructureContributions(Contributions):
         return data[fu_index, m_index, :]
 
     def get_contributions(self, contribution, functional_unit=None,
-                          method=None) -> np.ndarray:
+                          method=None, scenario=None) -> np.ndarray:
         """Return a contribution matrix given the type and fu / method
 
         Allow for both fu and method to exist.
@@ -319,7 +323,7 @@ class SuperstructureContributions(Contributions):
             return self._build_scenario_contributions(
                 dataset[contribution], int(functional_unit), int(method)
             )
-        return super().get_contributions(contribution, functional_unit, method)
+        return super().get_contributions(contribution, functional_unit, method, scenario)
 
     def _contribution_index_cols(self, **kwargs) -> (dict, Optional[Iterable]):
         # If both functional_unit and method are given, return scenario index.
@@ -329,8 +333,8 @@ class SuperstructureContributions(Contributions):
             return super()._contribution_index_cols(**kwargs)
 
     def top_elementary_flow_contributions(self, functional_unit=None, method=None,
-                                          aggregator=None, limit=5, normalize=False,
-                                          limit_type="number", **kwargs):
+                                          scenario=None, aggregator=None, limit=5,
+                                          normalize=False, limit_type="number", **kwargs):
         """Return top EF contributions for either functional_unit or method.
 
         * If functional_unit: Compare the unit against all considered impact
@@ -370,12 +374,12 @@ class SuperstructureContributions(Contributions):
             labels = list(kwargs['scenario_data']['name'])
         select = [int(i) for i in select]
 
-        C = self.get_contributions(self.EF, functional_unit, method)[select]
+        C = self.get_contributions(self.EF, functional_unit, method, scenario)[select]
         x_fields = self._contribution_rows(self.EF, aggregator)
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
-        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
+        index = [(index[i][0], labels[i]) for i in range(len(select))] # from filter index is a key
         C, rev_index, mask = self.aggregate_by_parameters(C, self.BIOS, aggregator)
 
         # Normalise if required
@@ -390,7 +394,7 @@ class SuperstructureContributions(Contributions):
         return labelled_df
 
     def top_process_contributions(self, functional_unit=None, method=None,
-                                  aggregator=None, limit=5, normalize=False,
+                                  scenario=None, aggregator=None, limit=5, normalize=False,
                                   limit_type="number", **kwargs):
         """Return top process contributions for functional_unit or method
 
@@ -430,13 +434,13 @@ class SuperstructureContributions(Contributions):
             labels = list(kwargs['scenario_data']['name'])
         select = [int(i) for i in select]
 
-        C = self.get_contributions(self.ACT, functional_unit, method)[select]
+        C = self.get_contributions(self.ACT, functional_unit, method, scenario)[select]
 
         x_fields = self._contribution_rows(self.ACT, aggregator)
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
-        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
+        index = [(index[i][0], labels[i]) for i in range(len(select))]
         C, rev_index, mask = self.aggregate_by_parameters(C, self.TECH, aggregator)
 
         # Normalise if required

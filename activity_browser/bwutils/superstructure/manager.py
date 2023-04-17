@@ -221,6 +221,7 @@ class SuperstructureManager(object):
         df = pd.DataFrame([], index=index, columns=columns)
         if not skip_checks:
             SuperstructureManager.check_duplicates(data)
+
             for f in data:
                 SuperstructureManager.check_scenario_exchange_values(f, cols)
                 df.loc[f.index, columns] = f.loc[:, columns]
