@@ -105,8 +105,14 @@ class SuperstructureManager(object):
 
     @staticmethod
     def addition_combine_frames(data: List[pd.DataFrame], index: pd.MultiIndex, cols: pd.Index, check_duplicates, skip_checks) -> pd.DataFrame:
+        """Iterate through the dataframes filtering the combined dataset for duplicates. The filtering is either
+        with warnings (skip_checks == False and check_duplicates points to the ABFileImporter.check_duplicates method),
+        or without. Runs a check for self-referential flows and updates the product values before returning the final
+        or without. Runs a check for self-referential flows and updates the product values before returning the final
+        combined dataframe, with the specified columns (cols).
+        """
         df = pd.DataFrame([], index=index, columns=cols)
-        if not skip_checks and check_duplicates:
+        if not skip_checks and check_duplicates: # Upon removing a dataframe this is run and the checks can be avoided
             check_duplicates(data)
             for f in data:
                 df[f.columns] = f

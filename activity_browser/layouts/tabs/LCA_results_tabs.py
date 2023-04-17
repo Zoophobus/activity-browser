@@ -260,11 +260,16 @@ class NewAnalysisTab(QWidget):
     def relativity_check(self, checked: bool):
         """Check if the relative or absolute option is selected."""
         self.relative = checked
-        self.update_tab()
+        self.update_tab(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[
+                self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
 
     def get_scenario_labels(self) -> List[str]:
         """Get scenario labels if scenarios are used."""
-        return self.parent.mlca.scenario_dataframe['name'].to_list() if self.has_scenarios else []
+        return self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']]['name'].to_list() if self.has_scenarios else []
 
     def configure_scenario(self):
         """Determine if scenario Qt widgets are visible or not and retrieve
@@ -361,6 +366,20 @@ class NewAnalysisTab(QWidget):
         export_menu.addStretch()
         return export_menu
 
+    @QtCore.Slot(int, name="updateUnderlyingMatrices")
+    def update_scenario_data(self, index: int) -> None:
+        """Will calculate which scenario array to use and update the current tab."""
+        if index == self.parent.mlca.current:
+            return
+        self.parent.mlca.set_scenario(index)
+        self.update_tab(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[
+                self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
+#        self.update_scenario_box_index.emit(index)
+
 
 class ResultSetupTab(QWidget):
     """Class for the interface for users to structure the presentation of results.
@@ -390,7 +409,7 @@ class ResultSetupTab(QWidget):
         self.layout.addWidget(header("Reference Flows:"))
         self.layout.addWidget(self.reference_flow_table)
 #        self.layout.addStretch(1)
-        self.layout.addWidget(header("Impact Assessment Methods:"))
+        self.layout.addWidget(header("Impact Categories:"))
         self.layout.addWidget(self.impact_category_table)
 
         if self.parent.has_scenarios:
@@ -416,7 +435,7 @@ class InventoryTab(NewAnalysisTab):
         Export options
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None):#TODO Fix the functional flows filtering
         super().__init__(parent)
         self.df_biosphere = None
         self.df_technosphere = None
@@ -485,10 +504,10 @@ class InventoryTab(NewAnalysisTab):
         self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
         self.bio_categorisation_factor_group.activated.connect(self.add_categorisation_factor_filter)
         if self.has_scenarios:
-            self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
+            self.scenario_box.currentIndexChanged.connect(self.update_scenario_data)
             self.parent.update_scenario_box_index.connect(
-                lambda index: self.set_combobox_index(self.scenario_box, index)
-            )
+                lambda index: self.set_combobox_index(self.scenario_box, index) # TODO Check to make sure this doesn't
+            ) # TODO require a default argument
         signals.update_lca_results.connect(self.update_filters)
 
     @QtCore.Slot(QRadioButton, name="addCategorisationFactorFilter")
@@ -601,6 +620,7 @@ class InventoryTab(NewAnalysisTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
@@ -655,7 +675,7 @@ class LCAResultsTab(NewAnalysisTab):
     def connect_signals(self):
         self.button_overview.toggled.connect(self.button_clicked)
         if self.has_scenarios:
-            self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
+            self.scenario_box.currentIndexChanged.connect(self.update_scenario_data)
             self.parent.update_scenario_box_index.connect(
                 lambda index: self.set_combobox_index(self.scenario_box, index)
             )
@@ -686,6 +706,7 @@ class LCAResultsTab(NewAnalysisTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
@@ -698,12 +719,13 @@ class LCAScoresTab(NewAnalysisTab):
         super().__init__(parent)
         self.parent = parent
 
+        self.scenario_box = None
         self.combobox_menu = QHBoxLayout()
         self.combobox_label = QLabel("Choose impact category:")
-        self.combobox = QComboBox()
-        self.combobox.scroll = False
+        self.methodbox = QComboBox()
+        self.methodbox.scroll = False
         self.combobox_menu.addWidget(self.combobox_label)
-        self.combobox_menu.addWidget(self.combobox, 1)
+        self.combobox_menu.addWidget(self.methodbox, 1)
         self.combobox_menu.addStretch(1)
         self.layout.addLayout(self.combobox_menu)
 
@@ -716,7 +738,7 @@ class LCAScoresTab(NewAnalysisTab):
         self.connect_signals()
 
     def connect_signals(self):
-        self.combobox.currentTextChanged.connect(self.update_plot)
+        self.methodbox.currentTextChanged.connect(self.update_plot)
 
     def build_export(self, has_table: bool = True, has_plot: bool = True) -> QHBoxLayout:
         """Add 3d excel export if scenario-type LCA is performed."""
@@ -743,7 +765,7 @@ class LCAScoresTab(NewAnalysisTab):
             methods = list(', '.join(method) for method in kwargs['methods'].loc[:, 'method_name'])
         else:
             methods = list(', '.join(method) for method in self.parent.mlca.methods_dataframe.loc[:,'method_name'])
-        self.update_combobox(self.combobox, methods)
+        self.update_combobox(self.methodbox, methods)
         kwargs['method'] = kwargs['methods'].loc[:, 'method_name'].to_list()[0] if not kwargs['methods'].empty else None
         super().update_tab(**kwargs)
 
@@ -758,12 +780,17 @@ class LCAScoresTab(NewAnalysisTab):
             reference_flows = kwargs['reference_flows']
         else:
             reference_flows = self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']]
-        select = [int(i) for i in reference_flows.index]
+        if 'scenarios' in kwargs:
+            scenarios = kwargs['scenarios']
+        else:
+            scenarios = self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']]
+#        select = [int(i) for i in reference_flows.index]
 
         df = self.parent.mlca.get_results_for_method(
-            int(self.parent.mlca.methods_dataframe.loc[self.parent.mlca.methods_dataframe['method_name'] == method].index.tolist()[0])
+            int(self.parent.mlca.methods_dataframe.loc[self.parent.mlca.methods_dataframe['method_name'] == method].index.tolist()[0]),
+            reference_flows=reference_flows, scenarios=scenarios
         )
-        df = df.iloc[select, :]
+#        df = df.iloc[select, :]
         labels = [
             bc.format_activity_label(fu, style='pnld') for fu in
             reference_flows.loc[:, 'reference_key']
@@ -785,6 +812,7 @@ class LCIAResultsTab(NewAnalysisTab):
         super(LCIAResultsTab, self).__init__(parent, **kwargs)
         self.parent = parent
         self.df = None
+        self.scenario_box = None
 
         # if not self.parent.single_func_unit:
         self.plot = LCAResultsPlot(self.parent)
@@ -817,6 +845,7 @@ class LCIAResultsTab(NewAnalysisTab):
 
     def update_tab(self, **kwargs):
         self.df = self.parent.contributions.lca_scores_df(normalized=self.relative, **kwargs)
+        self.configure_scenario()
         super().update_tab(**kwargs)
 
     def update_plot(self, **kwargs):
@@ -952,9 +981,13 @@ class ContributionTab(NewAnalysisTab):
         combobox objects to be read out (which comparison, drop-down indexes,
         etc.) and fed into update calls.
         """
-        # TODO This is currently failing when triggered by the relative/absolute checkboxes.
         # TODO It needs to be checked whether this can return to the previous mechanism of using
         # TODO the inputs from the menuboxes, so that this works when other toggles are used
+        def if_scenario(kwargs):
+            """ provides a dictionary with the scenario 'index' """
+            if self.has_scenarios:
+                return {"scenario": kwargs['scenarios'].index[self.combobox_menu.scenario.currentIndex()]}
+            return {}
         if self.combobox_menu.agg.currentText() != 'none':
             compare_fields = {"aggregator": self.combobox_menu.agg.currentText()}
         else:
@@ -965,10 +998,12 @@ class ContributionTab(NewAnalysisTab):
             compare_fields.update({
                 "method": kwargs['methods'].index[self.combobox_menu.method.currentIndex()],
             })
+            compare_fields.update(if_scenario(kwargs))
         elif self.switches.currentIndex() == self.switches.indexes.method:
             compare_fields.update({
                 "functional_unit": kwargs['reference_flows'].index[self.combobox_menu.func.currentIndex()],
             })
+            compare_fields.update(if_scenario(kwargs))
         elif self.switches.currentIndex() == self.switches.indexes.scenario:
             compare_fields.update({
                 "method": kwargs['methods'].index[self.combobox_menu.method.currentIndex()],
@@ -982,7 +1017,8 @@ class ContributionTab(NewAnalysisTab):
             'method_data': kwargs['methods'],
             'scenario_data': kwargs['scenarios']
         })
-        self.unit = get_unit(compare_fields.get("method"), self.relative)
+        method = kwargs['methods'].loc[compare_fields.get('method'), 'method_name'] if 'method' in compare_fields else None
+        self.unit = get_unit(method, self.relative)
         self.set_filename(compare_fields)
         self.df = self.update_dataframe(**compare_fields)
 
@@ -997,6 +1033,10 @@ class ContributionTab(NewAnalysisTab):
 
     def update_tab(self, **kwargs):
         """Update the tab."""
+        if not kwargs:
+            kwargs['reference_flows'] = self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']]
+            kwargs['methods'] = self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']]
+            kwargs['scenarios'] = self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
         self.set_combobox_changes(**kwargs)
         super().update_tab(**kwargs)
 
@@ -1023,18 +1063,19 @@ class ContributionTab(NewAnalysisTab):
         if self.pt_layout.parentWidget():
             self.pt_layout.parentWidget().updateGeometry()
 
-    def update_with_filters(self):
-        self.update_combbox_menu()
-        self.update_tab()
+#    def update_with_filters(self):
+#        self.update_combobox_menu()
+#        self.update_tab()
 
     def update_combobox_menu(self):
 
         self.combobox_menu.func.blockSignals(True)
         self.combobox_menu.func.clear()
-        self.combobox_menu.func.addItems(self.parent.mlca.reference_flow_activities_as_labels)
+        functions = self.parent.mlca.reference_flow_activities_as_labels
+        self.combobox_menu.func.addItems(functions)
         self.combobox_menu.func.blockSignals(False)
 
-        methods = list(', '.join(method) for method in self.parent.mlca.methods_dataframe.loc[:,'method_name'])
+        methods = list(', '.join(method) for method in self.parent.mlca.methods_dataframe.loc[self.parent.mlca.methods_dataframe['filter'], 'method_name'])
         self.combobox_menu.method.blockSignals(True)
         self.combobox_menu.method.clear()
         self.combobox_menu.method.addItems(methods)
@@ -1093,6 +1134,8 @@ class ElementaryFlowContributionTab(ContributionTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
+        self.update_combobox_menu()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
@@ -1150,6 +1193,8 @@ class ProcessContributionsTab(ContributionTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
+        self.update_combobox_menu()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
@@ -1240,7 +1285,7 @@ class MonteCarloTab(NewAnalysisTab):
         # self.radio_button_technosphere.clicked.connect(self.button_clicked)
 
         if self.has_scenarios:
-            self.scenario_box.currentIndexChanged.connect(self.parent.update_scenario_data)
+            self.scenario_box.currentIndexChanged.connect(self.update_scenario_data)
             self.parent.update_scenario_box_index.connect(
                 lambda index: self.set_combobox_index(self.scenario_box, index)
             )
@@ -1466,6 +1511,7 @@ class MonteCarloTab(NewAnalysisTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
@@ -1649,6 +1695,7 @@ class GSATab(NewAnalysisTab):
 
     @QtCore.Slot(name="updateFilters")
     def update_filters(self):
+        self.configure_scenario()
         self.update_tab(reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
                         methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
                         scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None)
