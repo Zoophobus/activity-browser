@@ -466,6 +466,7 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                 else:
                     df = ABCSVImporter.read_file(path, separator=separator)
 #                    ABCSVImporter.all_checks(df, ABCSVImporter.ABScenarioColumnsErrorIfNA, ABCSVImporter.scenario_names(df))
+                df = ABFileImporter.check_activity_keys(df)
                 df = ABFileImporter.check_duplicates(df)
                 if df is None:
                     QtWidgets.QApplication.restoreOverrideCursor()

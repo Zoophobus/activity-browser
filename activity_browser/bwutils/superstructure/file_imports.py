@@ -2,12 +2,15 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 import pandas as pd
 import ast
-from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QMessageBox, QFileDialog
 
 from typing import Optional, Union
+
+
+from ..metadata import AB_metadata
 from ..errors import (
     ImportCanceledError, ActivityProductionValueError, IncompatibleDatabaseNamingError,
-    InvalidSDFEntryValue, ExchangeErrorValues
+    InvalidSDFEntryValue, ExchangeErrorValues, ABError
 )
 
 
@@ -77,6 +80,16 @@ class ABPopup(QMessageBox):
             self.setDetailedText(self.dataframe_to_str())
         return self.exec_()
 
+    def save_dataframe(self, dataframe: pd.DataFrame) -> None:
+        filepath, _ = QFileDialog.getSaveFileName(
+            parent=self, caption="Choose the location to save the dataframe",
+            filter="All Files (*.*);; CSV (*.csv);; Excel (*.xlsx)",
+        )
+        if filepath.endswith('.xlsx') or filepath.endswith('.xls'):
+            dataframe.to_excel(filepath, index=False)
+        else:
+            dataframe.to_csv(filepath, index=False)
+
 
 class ABFileImporter(ABC):
     """
@@ -95,6 +108,8 @@ class ABFileImporter(ABC):
 
     ABScenarioColumnsErrorIfNA = {'from key', 'flow type', 'to key'}
     ABStandardBiosphereColumns = {'from categories', 'to categories'}
+
+
 
     def __init__(self):
         pass
@@ -190,6 +205,78 @@ class ABFileImporter(ABC):
             if response == warning.Cancel:
                 return None
             return data.drop_duplicates(index, keep='last', inplace=False)
+        return data
+
+    @staticmethod
+    def check_activity_keys(data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Checks the whether the activities have a key, for those activities without a key the AB metadata dataframes are
+        used with the available information to identify the keys. Dataframes are loaded into the AB metadata if not
+        already present. If activities are identified within the dataframe that do not occur within the metadata
+        dataframes then a popup message is created that allows the user to save the interim dataframe.
+        Arguments:
+        data: pd.DataFrame = the dataframe constructed from the Scenario Difference File
+        Returns:
+        a scenario dataframe with all keys present, or throws a ABError
+        """
+        no_key_df = data.loc[data['from key'].isna() | data['to key'].isna()]
+
+        # If all the keys are present then we can return the complete dataframe
+        if no_key_df.shape[0] == 0:
+            return data
+        databases = set(no_key_df['from database'].to_list() + no_key_df['to database'].to_list())
+        # need to append the flow direction (all except 'activity name' are compatible with brightway)
+        metafields = ['name', 'categories', 'reference product', 'location']
+        AB_metadata.add_metadata(databases)
+        FIELDS = [pd.Index(['to activity name', 'to categories', 'to reference product', 'to location']),
+                 pd.Index(['from activity name', 'from categories', 'from reference product', 'from location'])]
+        keys = ['from key', 'to key']
+        metadata = AB_metadata.dataframe
+        critical = {'from database': [], 'from activity name': [], 'to database': [],
+                    'to activity name': []}
+        for idx in no_key_df.index:
+            try:
+                for i in [0,1]:
+                    if isinstance(no_key_df.loc[idx,[FIELDS[i][1]]], float):
+                        key = metadata[(metadata[metafields[0]] == no_key_df[FIELDS[i][0]]) &
+                                       (metadata[metafields[2]] == no_key_df[FIELDS[i][2]]) &
+                                       (metadata[metafields[3]] == no_key_df[FIELDS[i][3]])].copy()
+                    else:
+                        key = metadata[(metadata[metafields[0]] == no_key_df[FIELDS[i][0]]) &
+                                       (metadata[metafields[1]] == no_key_df[FIELDS[i][1]])].copy()
+                for j, col in enumerate([['from key', 'from database'], ['to key', 'to database']][i]):
+                    no_key_df.loc[idx, no_key_df[col]] = (key['database'][0], key['code'][0]) if j == 0 else key['database'][0]
+            except Exception:
+                if len(critical['from database']) <= 5:
+                    critical['from database'].append(no_key_df.loc[idx, 'from database'])
+                    critical['from activity name'].append(no_key_df.loc[idx, 'from activity name'])
+                    critical['to database'].append(no_key_df.loc[idx, 'to database'])
+                    critical['to activity name'].append(no_key_df[idx, 'to activity name'])
+
+        data.loc[no_key_df.index, keys] = no_key_df[keys]
+        if critical['from database']:
+            critical_message = ABPopup()
+            critical_message.dataframe(pd.DataFrame(critical),
+                                       ['from database', 'from activity name', 'to database', 'to activity name'])
+            if len(critical['from database']) > 1:
+                msg = f"Multiple activities in the exchange flows could not be linked. The first five of these are provided.\n\n" \
+                      f"If you want to proceed with the import then press 'Ok' (doing so will enable you to save the dataframe\n" \
+                      f"to either .csv, or .xlsx formats), otherwise press 'Cancel'"
+                response = critical_message.abCritical("Activities not found", msg, QMessageBox.Save, QMessageBox.Cancel,
+                                                       default=2)
+            else:
+                msg = f"An activity in the exchange flows could not been linked (See below for the activity).\n\nIf you want to" \
+                      f"proceed with the import then press 'Ok' (doing so will enable you to save the dataframe to\n either .csv," \
+                      f"or .xlsx formats), otherwise press 'Cancel'"
+                response = critical_message.abCritical("Activity not found", msg, QMessageBox.Save, QMessageBox.Cancel,
+                                                       default=2)
+            if response == critical_message.Cancel:
+                return pd.DataFrame({}, columns=data.columns)
+            else:
+                critical_message.save_dataframe(data)
+                raise ABError(
+                    "Incompatible Activities in the scenario file, unable to complete further checks on the file"
+                )
         return data
 
     @staticmethod
