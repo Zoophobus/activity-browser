@@ -4,13 +4,15 @@ from typing import List
 import numpy as np
 import time
 import pandas as pd
+from PySide2.QtWidgets import QMessageBox
 
 import brightway2 as bw
 
 from .activities import fill_df_keys_with_fields
 from .dataframe import scenario_columns
 from .utils import guess_flow_type, SUPERSTRUCTURE, _time_it_
-
+from .file_imports import ABPopup
+from ..errors import CriticalScenarioExtensionError
 
 EXCHANGE_KEYS = pd.Index(["from key", "to key"])
 INDEX_KEYS = pd.Index(["from key", "to key", "flow type"])
@@ -25,7 +27,7 @@ class SuperstructureManager(object):
         ] + [SuperstructureManager.format_dataframe(f) for f in dfs]
         self.is_multiple = len(self.frames) > 1
 
-    def combined_data(self, kind: str = "product") -> pd.DataFrame:
+    def combined_data(self, kind: str = "product", check_duplicates = None) -> pd.DataFrame:
         """Combines multiple superstructures using a specific kind of logic.
 
         Currently implemented: 'product' creates an outer-product combination
@@ -55,9 +57,18 @@ class SuperstructureManager(object):
         elif kind == "addition":
             # Find the intersection subset of scenarios.
             cols = self._combine_columns_intersect()
+            if cols.empty:
+                critical = ABPopup()
+                msg = "While attempting to combine the scenario files an error was detected. No scenario columns were found in common between the files. For combining scenarios by extension at least one scenario needs to be found in common."
+                critical.abCritical("Combining scenario files.", msg, QMessageBox.Cancel)
+                raise CriticalScenarioExtensionError
             df = SuperstructureManager.addition_combine_frames(
                 self.frames, combo_idx, cols
             )
+            # Note the dataframe is built with a common index built from all files.
+            # So no duplicates will be present in the DataFrame (df), eliminating checks
+            # additionally the DataFrame does not contain the correct format at this point
+            # for duplicate checks.
         else:
             df = pd.DataFrame([], index=combo_idx)
 
@@ -111,7 +122,7 @@ class SuperstructureManager(object):
         if not isinstance(df.index, pd.MultiIndex):
             df.index = SuperstructureManager.build_index(df)
         df = SuperstructureManager.remove_duplicates(df)
-        df = SuperstructureManager.romain_merge_flows_to_self(df)
+        df = SuperstructureManager.merge_flows_to_self(df)
 
         return df
 
@@ -128,6 +139,7 @@ class SuperstructureManager(object):
         else False, axis=1), :]
 
         list_exc = []
+        prod_indexes = []
         for idx, row in df.loc[flows_to_self.index].iterrows():
 
             prod_idx = (idx[0], idx[1], 'production')
@@ -144,7 +156,6 @@ class SuperstructureManager(object):
                 # Once AB has support for multiple reference flows, we need to adjust this code to match the
                 # right flow -something with looping over the flows and getting the right product or something-.
                 prod_amt = list(bw.get_activity(idx[0]).production())[0].get('amount', 1)
-
                 # make a new df to edit the production, add the correct values/indices where needed
                 # and concat to the main df
                 new_prod = df.loc[tech_idx]
@@ -152,6 +163,7 @@ class SuperstructureManager(object):
                 new_prod.loc[scenario_cols] = prod_amt
                 list_exc.append(new_prod)
             else:
+                prod_indexes.append(prod_idx)
                 list_exc.append(df.loc[prod_idx])
         if len(flows_to_self) > 0:
             prod_idxs = [(x[0], x[1], "production") for x in flows_to_self.index]
@@ -160,10 +172,11 @@ class SuperstructureManager(object):
             extra_df = pd.DataFrame(list_exc)
             extra_df.index = prod_idxs
 
-            extra_df.loc[:, scenario_cols] -= df.loc[tech_idxs, scenario_cols].values
+            extra_df.loc[:, scenario_cols] = extra_df.loc[:, scenario_cols] / (extra_df.loc[:, scenario_cols] + df.loc[tech_idxs, scenario_cols].values)
 
             # drop the 'technosphere' flows
             df = df.drop(flows_to_self.index)
+            df = df.drop(prod_indexes)
             df = pd.concat([df, extra_df], axis=0)
         return df
 

@@ -13,7 +13,8 @@ from PySide2.QtWidgets import (
     QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QRadioButton,
     QLabel, QLineEdit, QCheckBox, QPushButton, QComboBox, QTableView,
     QButtonGroup, QMessageBox, QGroupBox, QGridLayout, QFileDialog,
-    QApplication, QSizePolicy
+    QButtonGroup, QMessageBox, QGroupBox, QGridLayout, QFileDialog,
+    QApplication, QSizePolicy, QToolBar
 )
 from PySide2 import QtGui, QtCore
 from stats_arrays.errors import InvalidParamsError
@@ -29,12 +30,13 @@ from ...signals import signals
 from ...ui.figures import (
     CorrelationPlot, LCAResultsBarChart, MonteCarloPlot, ContributionPlot, LCAResultsOverview
 )
+from ...ui.icons import qicons
 from ...ui.style import horizontal_line, vertical_line, header
 from ...ui.tables import ContributionTable, InventoryTable, LCAResultsTable
 from ...ui.web import SankeyNavigatorWidget
 from ...ui.widgets import SwitchComboBox
 from ...ui.widgets.mini_cutoff_menu import MiniCutoffMenu
-
+from .base import BaseRightTab
 
 def get_header_layout(header_text: str) -> QVBoxLayout:
     vlayout = QVBoxLayout()
@@ -181,7 +183,7 @@ class LCAResultsSubTab(QTabWidget):
             df.to_excel(filepath)
 
 
-class NewAnalysisTab(QWidget):
+class NewAnalysisTab(BaseRightTab):
     """Parent class around which all sub-tabs are built."""
 
     def __init__(self, parent=None):
@@ -1171,8 +1173,12 @@ class MonteCarloTab(NewAnalysisTab):
     def __init__(self, parent=None):
         super(MonteCarloTab, self).__init__(parent)
         self.parent: LCAResultsSubTab = parent
-
-        self.layout.addLayout(get_header_layout('Monte Carlo Simulation'))
+        header_ = QToolBar()
+        _header = header("Monte Carlo Simulation")
+        _header.setToolTip("Left click on the question mark for help")
+        header_.addWidget(_header)
+        header_.addAction(qicons.question, "Left click for help on Monte Carlo analysis", self.explanation)
+        self.layout.addWidget(header_)
         self.scenario_label = QLabel("Scenario:")
         self.include_box = QGroupBox("Include uncertainty for:", self)
         grid = QGridLayout()
@@ -1202,6 +1208,17 @@ class MonteCarloTab(NewAnalysisTab):
         self.layout.addWidget(self.export_widget)
         self.layout.setAlignment(QtCore.Qt.AlignTop)
         self.connect_signals()
+        self.explain_text = '''
+            <p><b>Monte Carlo Analyses</b></p>
+            <p><b>Monte Carlo</b> simulations generate stochastic data samples using existing data defined parameter 
+            distributions for generating the expected distribution for the reference flows. </p>
+            <p>More <b>simply</b>, within the LCA model the user may define certain uncertainty distributions for some 
+            (or all) parameters. Monte Carlo analysis uses these defined uncertainty distributions with a stochastic 
+            generator to sample from these distributions. This results in a "posterior" (or final) probability 
+            distribution, expressing the expected variance, for the reference flows.</p>
+             <p><a href="https://github.com/LCA-ActivityBrowser/activity-browser/wiki/Monte-Carlo-Simulation">More 
+             information can be found here</a></p>
+        '''
 
     def connect_signals(self):
         self.button_run.clicked.connect(self.calculate_mc_lca)
@@ -1444,7 +1461,13 @@ class GSATab(NewAnalysisTab):
 
         self.GSA = GlobalSensitivityAnalysis(self.parent.mc)
 
-        self.layout.addLayout(get_header_layout('Global Sensitivity Analysis'))
+        header_ = QToolBar()
+        _header = header("Global Sensitivity Analysis")
+        _header.setToolTip("Left click on the question mark for help")
+        header_.addWidget(_header)
+        header_.addAction(qicons.question, "Left click for help on Global Sensitivity Analysis", self.explanation)
+
+        self.layout.addWidget(header_)
         self.scenario_box = None
 
         self.add_GSA_ui_elements()
@@ -1462,6 +1485,18 @@ class GSATab(NewAnalysisTab):
         self.layout.addWidget(self.export_widget)
         self.layout.setAlignment(QtCore.Qt.AlignTop)
         self.connect_signals()
+
+        self.explain_text = '''
+            <p><b>Global Sensitivity Analysis (GSA)</b> is a family of methods that, used in conjunction with distribution
+            generating functions, can investigate the contributions of model variables on the final results.</p>
+             <p>Within the AB running a GSA depends on the use of a Monte Carlo simulation for generating the
+             variable distributions for the reference flow(s), upon which the GSA is performed. Running the GSA executes
+             the stochastic simulations whilst fixing the values of selected variables of interest. Taking a lower and
+             upper bound for the variables, therefore, indicates the influence of the fixed variable on the overall 
+             level of model variability. </p>
+             <p>For a more detailed explanation <a href="https://github.com/LCA-ActivityBrowser/activity-browser/wiki/Global-Sensitivity-Analysis">see the wiki</a></p>
+             <p>The paper describing the methods is published by <a href="https://onlinelibrary.wiley.com/doi/10.1111/jiec.13194">Wiley online</a></p> 
+        '''
 
     def connect_signals(self):
         self.button_run.clicked.connect(self.calculate_gsa)

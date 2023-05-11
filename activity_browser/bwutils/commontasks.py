@@ -106,7 +106,6 @@ def switch_brightway2_dir(dirpath):
         )
         print('Loaded brightway2 data directory: {}'.format(bw.projects._base_data_dir))
         return True
-
     except AssertionError:
         print('Could not access BW_DIR as specified in settings.py')
         return False
