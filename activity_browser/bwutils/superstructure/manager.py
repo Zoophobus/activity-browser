@@ -108,19 +108,18 @@ class SuperstructureManager(object):
         """Iterate through the dataframes filtering the combined dataset for duplicates. The filtering is either
         with warnings (skip_checks == False and check_duplicates points to the ABFileImporter.check_duplicates method),
         or without. Runs a check for self-referential flows and updates the product values before returning the final
-        or without. Runs a check for self-referential flows and updates the product values before returning the final
         combined dataframe, with the specified columns (cols).
         """
         df = pd.DataFrame([], index=index, columns=cols)
         if not skip_checks and check_duplicates: # Upon removing a dataframe this is run and the checks can be avoided
             check_duplicates(data)
             for f in data:
-                df[f.columns] = f
+                df.loc[f.index, cols] = f.loc[:, cols]
         else:
             for f in data:
                 if skip_checks:
                     f = SuperstructureManager.remove_duplicates(f)
-                df[f.columns] = f
+                df.loc[f.index, cols] = f.loc[:, cols]
         df = SuperstructureManager.merge_flows_to_self(df)
         return df.loc[:, cols]
 

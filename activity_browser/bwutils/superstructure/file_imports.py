@@ -219,7 +219,7 @@ class ABFileImporter(ABC):
     def _check_duplicates(dfp: pd.DataFrame, pdf: pd.DataFrame, index: list=['to key', 'from key', 'flow type']) -> pd.DataFrame:
         # First save the original index and create a new one that can help the user identify problems in their files
         d_idx = dfp.index
-        dfp.index = pd.Index([str(i) for i in range(pdf.shape[0])])
+        dfp.index = pd.Index([str(i) for i in range(dfp.shape[0])])
         p_idx = pdf.index
         pdf.index = pd.Index([str(i) for i in range(pdf.shape[0])])
         df = pd.concat([dfp,pdf], ignore_index=True)
