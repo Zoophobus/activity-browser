@@ -201,6 +201,7 @@ class SuperstructureManager(object):
 
     @staticmethod
     def addition_combine_frames(data: List[pd.DataFrame], index: pd.MultiIndex, cols: pd.Index, skip_checks: bool = False) -> pd.DataFrame:
+
         """
         Iterates through the combined dataframes to produce a single merged dataframe where duplicates are resolved
         with a "last one wins" approach
@@ -229,6 +230,7 @@ class SuperstructureManager(object):
             for f in data:
                 f = SuperstructureManager.remove_duplicates(f)
                 df.loc[f.index, columns] = f.loc[:, columns]
+
         df = SuperstructureManager.merge_flows_to_self(df)
 #        df.replace(np.nan, 0, inplace=True)
         return df.loc[:, cols]
