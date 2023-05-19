@@ -421,7 +421,29 @@ class ResultSetupTab(QWidget):
             self.layout.addStretch(1)
 
         self.setLayout(self.layout)
-        self.filter_button.clicked.connect(lambda: signals.update_lca_results.emit())
+        self.filter_button.clicked.connect(self.show_selected_lca_results)
+
+    def show_selected_lca_results(self):
+        if self.parent.has_scenarios and self.reference_flow_table.selected_options().any() and \
+                self.impact_category_table.selected_options().any() and self.scenario_table.selected_options().any():
+            signals.update_lca_results.emit()
+        elif not self.parent.has_scenarios and self.reference_flow_table.selected_options().any() and \
+                self.impact_category_table.selected_options().any():
+            signals.update_lca_results.emit()
+        else:
+            user_input = QMessageBox(self,
+                                     "Values required",
+                                     "To present results in the following tabs at least one option from each table needs" 
+                                    "to be switched. <p> Please click on the checkboxes to toggle the Categories, Flows,"
+                                     "and/or Scenarios. </p>",
+                                     QMessageBox.Ok)
+            user_input.setWindowTitle('Values required')
+            user_input.setText(
+                "To present results in the following tabs at least one option from each table needs "
+                "to be switched. <p> Please click on the checkboxes to toggle the Categories, Flows, "
+                "and/or Scenarios. </p>",
+            )
+            user_input.exec_()
 
 
 class InventoryTab(NewAnalysisTab):
@@ -472,8 +494,9 @@ class InventoryTab(NewAnalysisTab):
         self.bio_categorisation_factor_group.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
 
         # Setup the Qt environment for the buttons, including the arrangement
-        self.categorisation_filter_layout = QVBoxLayout()
-        self.categorisation_filter_layout.addWidget(QLabel("Filter flows:"))
+        self.method_filter = QLabel("Filter flows:")
+        self.categorisation_filter_layout = QHBoxLayout()
+        self.categorisation_filter_layout.addWidget(self.method_filter)
         self.categorisation_filter_layout.addWidget(self.bio_categorisation_factor_group)
         self.categorisation_filter_box = QWidget()
         self.categorisation_filter_box.setLayout(self.categorisation_filter_layout)
@@ -484,10 +507,10 @@ class InventoryTab(NewAnalysisTab):
         button_layout.addWidget(self.radio_button_technosphere)
         button_layout.addWidget(self.scenario_label)
         button_layout.addWidget(self.scenario_box)
+        button_layout.addWidget(self.categorisation_filter_box)
         button_layout.addStretch(1)
         button_layout.addWidget(self.remove_zeros_checkbox)
         self.layout.addLayout(button_layout)
-        self.layout.addWidget(self.categorisation_filter_box)
         # table
         self.table = InventoryTable(self.parent)
         self.table.table_name = 'Inventory_' + self.parent.cs_name
@@ -501,7 +524,7 @@ class InventoryTab(NewAnalysisTab):
     def connect_signals(self):
         self.radio_button_biosphere.toggled.connect(self.button_clicked)
         self.remove_zeros_checkbox.toggled.connect(self.remove_zeros_checked)
-        self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
+#        self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
         self.bio_categorisation_factor_group.activated.connect(self.add_categorisation_factor_filter)
         if self.has_scenarios:
             self.scenario_box.currentIndexChanged.connect(self.update_scenario_data)
@@ -529,14 +552,6 @@ class InventoryTab(NewAnalysisTab):
         )
         self.old_categorisation_factor_state = self.categorisation_factor_state
 
-    @QtCore.Slot(QRadioButton, name="toggleCategorisationFactorFilterButtons")
-    def toggle_categorisation_factor_filter_buttons(self, bttn: QRadioButton):
-        if bttn.text() == "Biosphere flows":
-            self.categorisation_filter_box.setVisible(True)
-        else:
-            self.categorisation_filter_box.setVisible(False)
-            self.categorisation_factor_state = None
-
     @QtCore.Slot(bool, name="isRemoveZerosToggled")
     def remove_zeros_checked(self, toggled: bool):
         """Update table according to remove-zero selected."""
@@ -549,7 +564,21 @@ class InventoryTab(NewAnalysisTab):
         """Update table according to radiobutton selected."""
         ext = "_Inventory" if toggled else "_Inventory_technosphere"
         self.table.table_name = "{}{}".format(self.parent.cs_name, ext)
-        self.update_table()
+        self.update_table(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[
+                self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
+        if toggled:
+            self.categorisation_filter_box.setVisible(True)
+            self.method_filter.setVisible(True)
+            self.bio_categorisation_factor_group.setVisible(True)
+        else:
+            self.categorisation_filter_box.setVisible(False)
+            self.method_filter.setVisible(False)
+            self.bio_categorisation_factor_group.setVisible(False)
+            self.categorisation_factor_state = None
 
     def configure_scenario(self):
         """Allow scenarios options to be visible when used."""
@@ -1500,7 +1529,7 @@ class MonteCarloTab(NewAnalysisTab):
         name = self.plot.plot_name
         self.plot = MonteCarloPlot(self.parent)
         self.layout.insertWidget(idx, self.plot)
-        super().update_plot(self.df, method=method, **kwargs)
+        super().update_plot(self.df, method=method)
         self.plot.plot_name = name
         self.plot.show()
         if self.layout.parentWidget():

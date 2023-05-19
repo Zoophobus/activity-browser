@@ -837,7 +837,7 @@ class Contributions(object):
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
-        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
+        index = [(index[j][0], labels[j]) for j, i in enumerate(select)]
         C, rev_index, mask = self.aggregate_by_parameters(C, self.BIOS, aggregator)
 
         # Normalise if required
@@ -895,7 +895,7 @@ class Contributions(object):
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )
-        index = [(index[i][0], labels[j]) for j, i in enumerate(select)]
+        index = [(index[j][0], labels[j]) for j, i in enumerate(select)]
         C, rev_index, mask = self.aggregate_by_parameters(C, self.TECH, aggregator)
 
         # Normalise if required

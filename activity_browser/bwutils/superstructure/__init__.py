@@ -3,7 +3,7 @@ from .dataframe import (
     scenario_names_from_df, superstructure_from_arrays
 )
 from .file_imports import (
-    ABFeatherImporter, ABCSVImporter, ABFileImporter
+    ABFeatherImporter, ABCSVImporter, ABFileImporter, ABPopup
 )
 from .excel import import_from_excel, get_sheet_names
 from .manager import SuperstructureManager

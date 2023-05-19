@@ -18,7 +18,7 @@ class FilterReferencesTable(ABDataFrameView):
     def __init__(self, parent = None):
         super().__init__(parent)
         self.verticalHeader().setVisible(False)
-        self.setItemDelegateForColumn(3, CheckboxDelegate(self))
+        self.setItemDelegateForColumn(6, CheckboxDelegate(self))
         self.setSizePolicy(QtWidgets.QSizePolicy(
             QtWidgets.QSizePolicy.Preferred,
             QtWidgets.QSizePolicy.Maximum
@@ -37,11 +37,14 @@ class FilterReferencesTable(ABDataFrameView):
         idx = None
         if event.button() == QtCore.Qt.LeftButton:
             proxy = self.indexAt(event.pos())
-            if proxy.column() == 3:
+            if proxy.column() == 6:
                 idx = proxy.row()
                 self.model.toggle(idx)
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Reference Flows")
+
+    def selected_options(self):
+        return self.model.toggled()
 
 class FilterMethodsTable(ABDataFrameView):
     """
@@ -55,7 +58,7 @@ class FilterMethodsTable(ABDataFrameView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.verticalHeader().setVisible(False)
-        self.setItemDelegateForColumn(1, CheckboxDelegate(self))
+        self.setItemDelegateForColumn(4, CheckboxDelegate(self))
         self.setSizePolicy(QtWidgets.QSizePolicy(
             QtWidgets.QSizePolicy.Preferred,
             QtWidgets.QSizePolicy.Maximum
@@ -73,11 +76,14 @@ class FilterMethodsTable(ABDataFrameView):
         """
         if event.button() == QtCore.Qt.LeftButton:
             proxy = self.indexAt(event.pos())
-            if proxy.column() == 1:
+            if proxy.column() == 4:
                 idx = proxy.row()
                 self.model.toggle(idx)
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Impact Assessment Methods")
+
+    def selected_options(self):
+        return self.model.toggled()
 
 
 class FilterScenariosTable(ABDataFrameView):
@@ -115,3 +121,7 @@ class FilterScenariosTable(ABDataFrameView):
                 self.model.toggle(idx)
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Scenarios")
+
+    def selected_options(self):
+        return self.model.toggled()
+
