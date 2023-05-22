@@ -2,7 +2,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 import pandas as pd
 import ast
-from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QMessageBox, QFileDialog
 
 from typing import Optional, Union
 from ..errors import (
@@ -58,31 +58,49 @@ class ABPopup(QMessageBox):
         return self.exec_()
 
 
-    def abWarning(self, title, message, button1, button2=None) -> QMessageBox:
+    def abWarning(self, title, message, button1, button2=None, default=1) -> QMessageBox:
         self.setWindowTitle(title)
         self.setText(message)
         self.setIcon(QMessageBox.Warning)
+        if default == 1:
+            default = button1
+        else:
+            default = button2
         if button2:
             self.setStandardButtons(button1 | button2)
         else:
             self.setStandardButtons(button1)
-        self.setDefaultButton(button1)
+        self.setDefaultButton(default)
         if self.data_frame is not None:
             self.setDetailedText(self.dataframe_to_str())
         return self.exec_()
 
-    def abCritical(self, title, message, button1, button2=None) -> QMessageBox:
+    def abCritical(self, title, message, button1, button2=None, default=1) -> QMessageBox:
         self.setWindowTitle(title)
         self.setText(message)
         self.setIcon(QMessageBox.Critical)
+        if default == 1:
+            default = button1
+        else:
+            default = button2
         if button2:
             self.setStandardButtons(button1 | button2)
         else:
             self.setStandardButtons(button1)
-        self.setDefaultButton(button1)
+        self.setDefaultButton(default)
         if self.data_frame is not None:
             self.setDetailedText(self.dataframe_to_str())
         return self.exec_()
+
+    def save_dataframe(self, dataframe: pd.DataFrame) -> None:
+        filepath, _ = QFileDialog.getSaveFileName(
+            parent=self, caption="Choose the location to save the dataframe",
+            filter="All Files (*.*);; CSV (*.csv);; Excel (*.xlsx)",
+        )
+        if filepath.endswith('.xlsx') or filepath.endswith('.xls'):
+            dataframe.to_excel(filepath, index=False)
+        else:
+            dataframe.to_csv(filepath, index=False, sep=';')
 
 
 class ABFileImporter(ABC):
