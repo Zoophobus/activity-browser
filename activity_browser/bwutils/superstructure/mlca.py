@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from typing import Iterable, Optional
 from PySide2 import QtCore
+from PySide2.QtWidgets import QMessageBox
+
 from bw2calc.matrices import TechnosphereBiosphereMatrixBuilder as MB
 import numpy as np
 import pandas as pd
@@ -9,11 +11,12 @@ from ...signals import signals
 from ..commontasks import format_activity_label
 from ..multilca import MLCA, Contributions
 from ..utils import Index
+from ..errors import CriticalCalculationError
 from .dataframe import (
     scenario_names_from_df, arrays_from_indexed_superstructure,
     filter_databases_indexed_superstructure
 )
-
+from .file_imports import ABPopup
 
 class SuperstructureMLCA(MLCA):
     """Subclass of the `MLCA` class which adds another dimension in the form
@@ -104,7 +107,13 @@ class SuperstructureMLCA(MLCA):
                 idx.exchange_type,
             )
         for i, index in enumerate(self.indices):
-            self.matrix_indices[i] = convert(index)
+            try:
+                self.matrix_indices[i] = convert(index)
+            except (ValueError, KeyError) as e:
+                critical = ABPopup()
+                msg = f"One of the activities in the exchange between ({index.input.database}, {index.input.code}) and ({index.output.database}, {index.output.code}) from the scenario file is not present within the designated database. Please check both keys for this exchange within your scenario file with the corresponding databases."
+                critical.abCritical("Scenario Key Error", msg, QMessageBox.Cancel)
+                raise CriticalCalculationError
 
     def update_matrices(self) -> None:
         """A Simplified version of the `PackagesDataLoader.update_matrices` method.
