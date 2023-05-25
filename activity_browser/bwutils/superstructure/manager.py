@@ -27,7 +27,7 @@ class SuperstructureManager(object):
         ] + [SuperstructureManager.format_dataframe(f) for f in dfs]
         self.is_multiple = len(self.frames) > 1
 
-    def combined_data(self, kind: str = "product", check_duplicates = None, skip_checks: bool=False) -> pd.DataFrame:
+    def combined_data(self, kind: str = "product", check_duplicates=None, skip_checks: bool=False) -> pd.DataFrame:
         """Combines multiple superstructures using a specific kind of logic.
 
         Currently implemented: 'product' creates an outer-product combination
@@ -94,9 +94,11 @@ class SuperstructureManager(object):
         iterable = iter(self.frames)
         df = next(iterable)
         # If the keys point to the same flow (e.g. self referential) then check that it's not a technosphere activity
-        idx = df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index
+        #idx = df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index
+        idx = df.index
         for df in iterable:
-            idx = idx.union(df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index)
+            #idx = idx.union(df[(df['from key'] != df['to key']) | (df['flow type'] != 'technosphere')].index)
+            idx = idx.union(df.index)
         return idx
 
     @staticmethod
@@ -121,16 +123,17 @@ class SuperstructureManager(object):
         or without. Runs a check for self-referential flows and updates the product values before returning the final
         combined dataframe, with the specified columns (cols).
         """
-        df = pd.DataFrame([], index=index, columns=cols)
+        columns = data.columns if isinstance(data, pd.DataFrame) else data[0].columns
+        df = pd.DataFrame([], index=index, columns=columns)
         if not skip_checks and check_duplicates: # Upon removing a dataframe this is run and the checks can be avoided
             check_duplicates(data)
             for f in data:
-                df.loc[f.index, cols] = f.loc[:, cols]
+                df.loc[f.index, columns] = f.loc[:, columns]
         else:
             for f in data:
                 if skip_checks:
                     f = SuperstructureManager.remove_duplicates(f)
-                df.loc[f.index, cols] = f.loc[:, cols]
+                df.loc[f.index, columns] = f.loc[:, columns]
         df = SuperstructureManager.merge_flows_to_self(df)
         return df.loc[:, cols]
 
