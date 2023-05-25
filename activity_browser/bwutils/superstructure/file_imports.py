@@ -210,7 +210,7 @@ class ABFileImporter(ABC):
         Produces a warning
         """
         if isinstance(data, pd.DataFrame):
-            ABFileImporter._check_duplicate(data, index)
+            return ABFileImporter._check_duplicate(data, index)
         else:
             # Each time the frames are gathered into a list
             # and we are always checking the last file
@@ -271,6 +271,7 @@ class ABFileImporter(ABC):
             if response == warning.Cancel:
                 return
             data.drop_duplicates(index, keep='last', inplace=True)
+        return data
 
     @staticmethod
     def fill_nas(data: pd.DataFrame) -> pd.DataFrame:
