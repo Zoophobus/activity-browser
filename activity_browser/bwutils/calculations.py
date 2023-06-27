@@ -6,6 +6,7 @@ from ..bwutils import (
     SuperstructureContributions, SuperstructureMLCA,
 )
 from bw2calc.errors import BW2CalcError
+from .errors import UnlinkableScenarioExchangeError
 import brightway2 as bw
 
 from .errors import CriticalCalculationError
@@ -44,6 +45,9 @@ def do_LCA_calculations(data: dict):
         except CriticalCalculationError as e:
             QApplication.restoreOverrideCursor()
             raise Exception(e)
+        except UnlinkableScenarioExchangeError as e:
+            QApplication.restoreOverrideCursor()
+            raise CriticalCalculationError
     else:
         print('Calculation type must be: simple or scenario. Given:', cs_name)
         raise ValueError
