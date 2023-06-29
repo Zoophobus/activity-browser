@@ -36,7 +36,6 @@ requirements:
     - seaborn
     - selenium
     - presamples
-    - numpy =1.23.5
 
 
 about:

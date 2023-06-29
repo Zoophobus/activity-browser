@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
+import os
 from .controllers import controllers
 from .layouts import MainWindow
 
 
 class Application(object):
+    CURRENT_PATH = os.path.dirname(__file__)
+    CSS_STYLE = os.path.join(CURRENT_PATH, 'static', 'css', 'main.css')
     def __init__(self):
         self.main_window = MainWindow()
 
@@ -13,6 +16,8 @@ class Application(object):
         # dialogs and wizards.
         for attr, controller in controllers.items():
             setattr(self, attr, controller(self.main_window))
+        with open(Application.CSS_STYLE, "r") as fh:
+            self.main_window.setStyleSheet(fh.read())
 
     def show(self):
         self.main_window.showMaximized()

@@ -1,0 +1,4 @@
+* { font-family: sans-serif, serif; background-color: #f0f0f0; color: #101010}
+QWidget>QWidget>QWidget>QWidget>QWidget>QWidget { background-color: #FFFFFF; color: #101010 }
+QWidget>QTableView { background-color: #FFFFFF; color: #101010 }
+QWidget>QTableWidget { background-color: #FFFFFF; color: #101010 }

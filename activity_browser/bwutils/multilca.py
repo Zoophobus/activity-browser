@@ -846,8 +846,8 @@ class Contributions(object):
 
         """
         C = self.get_contributions(self.ACT, functional_unit, method)
-
         x_fields = self._contribution_rows(self.ACT, aggregator)
+        # C contains the coefficients of interest x_fields the field
         index, y_fields = self._contribution_index_cols(
             functional_unit=functional_unit, method=method
         )

@@ -28,7 +28,8 @@ from ...bwutils import (
 from ...bwutils.superstructure import _time_it_
 from ...signals import signals
 from ...ui.figures import (
-    CorrelationPlot, LCAResultsBarChart, MonteCarloPlot, ContributionPlot, LCAResultsOverview
+    CorrelationPlot, LCAResultsBarChart, MonteCarloPlot, ContributionPlot, LCAResultsOverview,
+    HeatMapPlot
 )
 from ...ui.icons import qicons
 from ...ui.style import horizontal_line, vertical_line, header
@@ -770,7 +771,8 @@ class LCIAResultsTab(NewAnalysisTab):
         self.df = None
 
         # if not self.parent.single_func_unit:
-        self.plot = LCAResultsOverview(self.parent)
+#        self.plot = LCAResultsOverview(self.parent) # to use the bar plot for the overview
+        self.plot = HeatMapPlot(self.parent) # to use the heatmap for the overview
         self.plot.plot_name = self.parent.cs_name + '_LCIA results'
         self.table = LCAResultsTable(self.parent)
         self.table.table_name = self.parent.cs_name + '_LCIA results'
@@ -811,7 +813,8 @@ class LCIAResultsTab(NewAnalysisTab):
         """Update the plot."""
         idx = self.pt_layout.indexOf(self.plot)
         self.plot.deleteLater()
-        self.plot = LCAResultsOverview(self.parent)
+#        self.plot = LCAResultsOverview(self.parent) # for the bar plot
+        self.plot = HeatMapPlot(self.parent) # for the heatmap
         self.pt_layout.insertWidget(idx, self.plot)
         super().update_plot(self.df)
         if self.pt_layout.parentWidget():
