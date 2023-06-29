@@ -81,14 +81,17 @@ class SuperstructureManager(object):
             # for duplicate checks.
         else:
             df = pd.DataFrame([], index=combo_idx)
-        return df
+        cols = scenario_columns(df)
+        return pd.DataFrame(
+            data=df.loc[:,cols], index=df.index, columns=cols
+        )
 
     def _combine_columns(self) -> pd.MultiIndex:
         def test_column_names(cols):
             col_set = set()
             cols_len = 0
             for col in cols:
-                col_set.union(col)
+                col_set = col_set.union(col)
                 cols_len += len(col)
             if cols_len != len(col_set):
                 msg = "While attempting to combine the scenario files an error was detected. The scenario "\
@@ -96,7 +99,7 @@ class SuperstructureManager(object):
                 "unique. Some scenario names between files were found to be non-unique.<br> To correct "\
                 "this please make sure that the scenario names between the files are unique, before trying "\
                 "again"
-                critical  = ABPopup.abCritical("Combining scenario files", msg, QPushButton('Cancel'))
+                critical = ABPopup.abCritical("Combining scenario files", msg, QPushButton('Cancel'))
                 critical.exec_()
                 raise CriticalScenarioExtensionError()
         cols = [scenario_columns(df).to_list() for df in self.frames]

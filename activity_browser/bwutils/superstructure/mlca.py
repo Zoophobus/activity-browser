@@ -38,8 +38,10 @@ class SuperstructureMLCA(MLCA):
         # Filter dataframe for keys that do not occur in the LCA matrix.
         df = filter_databases_indexed_superstructure(df, self.all_databases)
         assert not df.empty, "Filtering unused flows removed all of the scenario data."
-
-        self.indices, self.values = arrays_from_indexed_superstructure(df)
+        try:
+            self.indices, self.values = arrays_from_indexed_superstructure(df)
+        except Exception as e:
+            print(e)
         # Note: Using the mapping scheme from brightway and presamples,
         # the 'input' keys are matched to the product_dict or
         # biosphere_dict ('rows') while the 'output' keys are matched

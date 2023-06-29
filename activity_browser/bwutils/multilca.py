@@ -11,7 +11,7 @@ ca = ContributionAnalysis()
 
 from .commontasks import wrap_text
 from .metadata import AB_metadata
-from .errors import ReferenceFlowValueWarning
+from .errors import ReferenceFlowValueError
 from ..signals import signals
 
 class MLCA(object):
@@ -115,7 +115,7 @@ class MLCA(object):
             msg.setIcon(QMessageBox.Warning)
             QApplication.restoreOverrideCursor()
             msg.exec_()
-            raise ReferenceFlowValueWarning("Sum of reference flows == 0")
+            raise ReferenceFlowValueError("Sum of reference flows == 0")
 
         # reference flows and related indexes
         self.reference_dataframe = pd.DataFrame({
