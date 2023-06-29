@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 from typing import Iterable, Optional
-from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QPushButton
 
 from bw2calc.matrices import TechnosphereBiosphereMatrixBuilder as MB
 import numpy as np
 import pandas as pd
 
+from ...signals import signals
 from ..commontasks import format_activity_label
 from ..multilca import MLCA, Contributions
 from ..utils import Index
-from ..errors import CriticalCalculationError
+from ..errors import UnlinkableScenarioExchangeError
 from .dataframe import (
     scenario_names_from_df, arrays_from_indexed_superstructure,
     filter_databases_indexed_superstructure
 )
-from .file_imports import ABPopup
+from .file_dialogs import ABPopup
 
 class SuperstructureMLCA(MLCA):
     """Subclass of the `MLCA` class which adds another dimension in the form
@@ -28,8 +29,8 @@ class SuperstructureMLCA(MLCA):
 
     def __init__(self, cs_name: str, df: pd.DataFrame):
         assert not df.empty, "Cannot run analysis without data."
-        self.scenario_names = scenario_names_from_df(df)
-        self.total = len(self.scenario_names)
+        scenario_names = scenario_names_from_df(df)
+        self.total = len(scenario_names)
         assert self.total > 0, "Cannot run analysis without scenarios"
 
         super().__init__(cs_name)
@@ -37,12 +38,15 @@ class SuperstructureMLCA(MLCA):
         # Filter dataframe for keys that do not occur in the LCA matrix.
         df = filter_databases_indexed_superstructure(df, self.all_databases)
         assert not df.empty, "Filtering unused flows removed all of the scenario data."
-
-        self.indices, self.values = arrays_from_indexed_superstructure(df)
+        try:
+            self.indices, self.values = arrays_from_indexed_superstructure(df)
+        except Exception as e:
+            print(e)
         # Note: Using the mapping scheme from brightway and presamples,
         # the 'input' keys are matched to the product_dict or
         # biosphere_dict ('rows') while the 'output' keys are matched
         # to the activity_dict ('cols').
+
 
         # Side-note on presamples: Presamples was used in AB for calculating scenarios,
         # presamples was superseded by this implementation. For more reading:
@@ -54,18 +58,25 @@ class SuperstructureMLCA(MLCA):
 
         # Construct an index dictionary similar to fu_index and method_index
         self._current_index = 0
-        self.scenario_index = {k: i for i, k in enumerate(self.scenario_names)}
+#        self.scenario_index = {k: i for i, k in enumerate(self.scenario_names)}
+
+        self.scenario_dataframe = pd.DataFrame({
+            'name': scenario_names,
+            'filter': [True for i in range(self.total)]
+        }, index=pd.Index([str(i) for i in range(self.total)])
+        )
 
         # Rebuild numpy arrays with scenario dimension included.
-        self.lca_scores = np.zeros((len(self.func_units), len(self.methods), self.total))
+        self.lca_scores = np.zeros((self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.total))
         self.elementary_flow_contributions = np.zeros((
-            len(self.func_units), len(self.methods), self.total,
+            self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.total,
             self.lca.biosphere_matrix.shape[0]
         ))
         self.process_contributions = np.zeros((
-            len(self.func_units), len(self.methods), self.total,
+            self.reference_dataframe.shape[0], self.methods_dataframe.shape[0], self.total,
             self.lca.technosphere_matrix.shape[0]
         ))
+#        signals.lca_results_filter.connect(self.filter_results)
 
     @property
     def current(self) -> int:
@@ -101,14 +112,17 @@ class SuperstructureMLCA(MLCA):
             try:
                 self.matrix_indices[i] = convert(index)
             except (ValueError, KeyError) as e:
-                critical = ABPopup()
+                # This is to be used as a fail safe for the case where we don't catch a bad exchange during the import
+                # process, or if something else causes an issue with the exchange
                 msg = f"One of the activities in the exchange between ({index.input.database}, {index.input.code}) and ({index.output.database}, {index.output.code}) from the scenario file is not present within the designated database. Please check both keys for this exchange within your scenario file with the corresponding databases."
-                critical.abCritical("Scenario Key Error", msg, QMessageBox.Cancel)
-                raise CriticalCalculationError
+                critical = ABPopup.abCritical("Scenario Key Error", msg, QPushButton('Cancel'))
+                critical.exec_()
+                raise UnlinkableScenarioExchangeError
+            except Exception as e:
+                continue
 
     def update_matrices(self) -> None:
         """A Simplified version of the `PackagesDataLoader.update_matrices` method.
-
         In this case, we expect to only replace technosphere and biosphere
         values, leaving out characterization factor values.
         """
@@ -141,17 +155,17 @@ class SuperstructureMLCA(MLCA):
         """
         for ps_col in range(self.total):
             self.next_scenario()
-            for row, func_unit in enumerate(self.func_units):
-                self.lca.redo_lci(func_unit)
+            for row, func_unit in enumerate(self.reference_dataframe['reference_key'].to_list()):
+                self.lca.redo_lci({func_unit: self.reference_dataframe.loc[str(row), 'demand_value']})
                 self.scaling_factors.update({
                     (str(func_unit), ps_col): self.lca.supply_array
                 })
-                self.technosphere_flows.update({
+                self.technosphere_flows.append({
                     (str(func_unit), ps_col): np.multiply(
                         self.lca.supply_array, self.lca.technosphere_matrix.diagonal()
                     )
                 })
-                self.inventory.update({
+                self.inventory.append({
                     (str(func_unit), ps_col): np.array(self.lca.inventory.sum(axis=1)).ravel()
                 })
                 self.inventories.update({
@@ -183,13 +197,17 @@ class SuperstructureMLCA(MLCA):
         self.lca.lcia_calculation()
         self.lca.decompose_technosphere()
 
-    def get_results_for_method(self, index: int = 0) -> pd.DataFrame:
+    def get_results_for_method(self, index: int = 0, **kwargs) -> pd.DataFrame:
         """ Overrides the parent and returns a dataframe with the scenarios
          as columns
         """
+        act_idx = [int(i) for i in kwargs['reference_flows'].index.to_list()]
+        scn_idx = [int(i) for i in kwargs['scenarios'].index.to_list()]
         data = self.lca_scores[:, index, :]
+        data = data[act_idx, :]
+        data = data[:, scn_idx]
         return pd.DataFrame(
-            data, index=self.func_key_list, columns=self.scenario_names
+            data, index=self.reference_flow_activities_as_list, columns=kwargs['scenarios']['name'].to_list()
         )
 
     def _get_steps_to_index(self, index: int) -> list:
@@ -222,17 +240,24 @@ class SuperstructureMLCA(MLCA):
             data=[],
             index=pd.Index(labels),
             columns=pd.MultiIndex.from_product(
-                [methods, self.scenario_names],
+                [methods, self.scenario_dataframe['name'].to_list()],
                 names=["method", "scenario"]
             ),
         )
         # Now insert the LCA scores in the correct locations.
         for x, m in enumerate(methods):
-            for y, s in enumerate(self.scenario_names):
+            for y, s in enumerate(self.scenario_dataframe['name'].to_list()):
                 idx = pd.MultiIndex.from_tuples([(m, s)])
                 df.loc[:, idx] = self.lca_scores[:, x, y]
         return df
 
+# TODO check for whether this is required
+#    @QtCore.Slot(int, str, name="filterResults")
+#    def filter_results(self, key: int, group: str):
+#        if group == 'Scenarios':
+#            self.scenario_dataframe.loc[str(key), 'filter'] = not self.scenario_dataframe.loc[str(key), 'filter']
+#        super().filter_results(key, group)
+#
 
 class SuperstructureContributions(Contributions):
     mlca: SuperstructureMLCA
@@ -242,20 +267,22 @@ class SuperstructureContributions(Contributions):
             raise TypeError("Must pass a SuperstructureMLCA object. Passed: {}".format(type(mlca)))
         super().__init__(mlca)
 
-    def _build_inventory(self, inventory: dict, indices: dict, columns: list,
+    def _build_inventory(self, inventory: list, indices: dict, columns: list,
                          fields: list) -> pd.DataFrame:
-        inventory = {k[0]: v for k, v in inventory.items() if k[1] == self.mlca.current}
-        return super()._build_inventory(inventory, indices, columns, fields)
 
-    def lca_scores_df(self, normalized: bool = False) -> pd.DataFrame:
+        inventory_ = [(next(iter(v.keys()))[0], next(iter(v.values()))) for v in inventory
+                     if next(iter(v.keys()))[1] == self.mlca.current]
+        return super()._build_inventory(inventory_, indices, columns, fields)
+
+    def lca_scores_df(self, normalized: bool = False, **kwargs) -> pd.DataFrame:
         """Returns a metadata-annotated DataFrame of the LCA scores.
         """
         scores = self.mlca.lca_scores_normalized if normalized else self.mlca.lca_scores
         scores = scores[:, :, self.mlca.current]
-        return self._build_lca_scores_df(scores)
+        return self._build_lca_scores_df(scores, **kwargs)
 
-    def _build_contributions(self, data: np.ndarray, index: int, axis: int) -> np.ndarray:
-        data = data[:, :, self.mlca.current]
+    def _build_contributions(self, data: np.ndarray, index: int, axis: int, scenario: int) -> np.ndarray:
+        data = data[:, :, scenario]
         return super()._build_contributions(data, index, axis)
 
     @staticmethod
@@ -263,7 +290,7 @@ class SuperstructureContributions(Contributions):
         return data[fu_index, m_index, :]
 
     def get_contributions(self, contribution, functional_unit=None,
-                          method=None) -> np.ndarray:
+                          method=None, scenario=None) -> np.ndarray:
         """Return a contribution matrix given the type and fu / method
 
         Allow for both fu and method to exist.
@@ -279,14 +306,144 @@ class SuperstructureContributions(Contributions):
         }
         if method and functional_unit:
             return self._build_scenario_contributions(
-                dataset[contribution], self.mlca.func_key_dict[functional_unit],
-                self.mlca.method_index[method]
+                dataset[contribution], int(functional_unit), int(method)
             )
-        return super().get_contributions(contribution, functional_unit, method)
+        return super().get_contributions(contribution, functional_unit, method, scenario)
 
     def _contribution_index_cols(self, **kwargs) -> (dict, Optional[Iterable]):
         # If both functional_unit and method are given, return scenario index.
         if all(kwargs.values()):
-            return self.mlca.scenario_index, self.act_fields
+            return self.mlca.scenario_dataframe['name'].to_list(), self.act_fields
         else:
             return super()._contribution_index_cols(**kwargs)
+
+    def top_elementary_flow_contributions(self, functional_unit=None, method=None,
+                                          scenario=None, aggregator=None, limit=5,
+                                          normalize=False, limit_type="number", **kwargs):
+        """Return top EF contributions for either functional_unit or method.
+
+        * If functional_unit: Compare the unit against all considered impact
+        assessment methods.
+        * If method: Compare the method against all involved processes.
+
+        Parameters
+        ----------
+        functional_unit : tuple, optional
+            The reference flow to compare all considered impact categories against
+        method : tuple, optional
+            The method to compare all considered reference flows against
+        aggregator : str or list, optional
+            Used to aggregate EF contributions over certain columns
+        limit : int
+            The number of top contributions to consider
+        normalize : bool
+            Determines whether or not to normalize the contribution values
+        limit_type : str
+            The type of limit, either 'number' or 'percent'
+
+
+        Returns
+        -------
+        `pandas.DataFrame`
+            Annotated top-contribution dataframe
+
+        """
+        if functional_unit is None:
+            select = kwargs['reference_flows'].index
+            labels = list(kwargs['reference_flows']['reference_name'])
+        elif method is None:
+            select = kwargs['method_data'].index
+            labels = list(kwargs['method_data']['method_name'])
+        else:
+            select = kwargs['scenario_data'].index
+            labels = list(kwargs['scenario_data']['name'])
+        select = [int(i) for i in select]
+
+        C = self.get_contributions(self.EF, functional_unit, method, scenario)[select]
+        x_fields = self._contribution_rows(self.EF, aggregator)
+        index, y_fields = self._contribution_index_cols(
+            functional_unit=functional_unit, method=method
+        )
+        index = [(index[i][0], labels[i]) for i in range(len(select))] # from filter index is a key
+        C, rev_index, mask = self.aggregate_by_parameters(C, self.BIOS, aggregator)
+
+        # Normalise if required
+        if normalize:
+            C = self.normalize(C)
+
+        top_cont_dict = self._build_frame(C, index, rev_index, limit, limit_type)
+        labelled_df = self.get_labelled_contribution_frame(
+            top_cont_dict, x_fields=x_fields, y_fields=y_fields, mask=mask
+        )
+        self.adjust_table_unit(labelled_df, method)
+        return labelled_df
+
+    def top_process_contributions(self, functional_unit=None, method=None,
+                                  scenario=None, aggregator=None, limit=5, normalize=False,
+                                  limit_type="number", **kwargs):
+        """Return top process contributions for functional_unit or method
+
+        * If functional_unit: Compare the process against all considered impact
+        assessment methods.
+        * If method: Compare the method against all involved processes.
+
+        Parameters
+        ----------
+        functional_unit : tuple, optional
+            The reference flow to compare all considered methods against
+        method : tuple, optional
+            The method to compare all considered reference flows against
+        aggregator : str or list, optional
+            Used to aggregate PC contributions over certain columns
+        limit : int
+            The number of top contributions to consider
+        normalize : bool
+            Determines whether or not to normalize the contribution values
+        limit_type : str
+            The type of limit, either 'number' or 'percent'
+
+        Returns
+        -------
+        `pandas.DataFrame`
+            Annotated top-contribution dataframe
+
+        """
+        if functional_unit is None:
+            select = kwargs['reference_flows'].index
+            labels = list(kwargs['reference_flows']['reference_name'])
+        elif method is None:
+            select = kwargs['method_data'].index
+            labels = list(kwargs['method_data']['method_name'])
+        else:
+            select = kwargs['scenario_data'].index
+            labels = list(kwargs['scenario_data']['name'])
+        select = [int(i) for i in select]
+
+        C = self.get_contributions(self.ACT, functional_unit, method, scenario)[select]
+
+        x_fields = self._contribution_rows(self.ACT, aggregator)
+        index, y_fields = self._contribution_index_cols(
+            functional_unit=functional_unit, method=method
+        )
+        index = [(index[i][0], labels[i]) for i in range(len(select))]
+        C, rev_index, mask = self.aggregate_by_parameters(C, self.TECH, aggregator)
+
+        # Normalise if required
+        if normalize:
+            C = self.normalize(C)
+
+        top_cont_dict = self._build_frame(C, index, rev_index, limit, limit_type)
+        labelled_df = self.get_labelled_contribution_frame(
+            top_cont_dict, x_fields=x_fields, y_fields=y_fields, mask=mask
+        )
+        self.adjust_table_unit(labelled_df, method)
+        return labelled_df
+
+    def inventory_df(self, inventory_type: str, columns: set = {'name', 'database', 'code'}, reference_flows=None,
+                     methods=None, scenarios=None):
+        """
+        Superscedes the Contributions method to provide an additional argument for iterating through
+        the scenario data, required for the filtering procedures introduced within the results tabs
+        """
+        return super().inventory_df(inventory_type=inventory_type, columns=columns, reference_flows=reference_flows,
+                             methods=methods, scenarios=scenarios, total=self.mlca.total)

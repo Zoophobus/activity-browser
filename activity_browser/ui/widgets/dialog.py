@@ -186,7 +186,8 @@ class ExcelReadDialog(QtWidgets.QDialog):
     def browse(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             parent=self, caption="Select scenario template file",
-            filter="Excel (*.xlsx);; feather (*.feather);; CSV and Archived (*.csv *.zip *.tar *.bz2 *.gz *.xz);; All Files (*.*)"
+            filter="Excel (*.xlsx);; feather (*.feather);; CSV and Archived (*.csv *.zip *.tar *.bz2 *.gz *.xz);; All Files (*.*)",
+            selectedFilter="All Files (*.*)"
         )
         if path:
             self.path_line.setText(path)
@@ -1093,13 +1094,13 @@ class ScenarioDatabaseDialog(QtWidgets.QDialog):
     """
     Displays the possible databases for relinking the exchanges for a given activity
     """
-    def __init__(self, parent=None):
-        super().__init__()
+    def __init__(self, parent: QtWidgets.QWidget = None):
+        super().__init__(parent)
         self.setWindowTitle("Linking scenario databases")
 
-        self.label = QtWidgets.QLabel("The following database(s) in the scenario file cannot be found in your local environment.\n\n"
-                                      "Either signify the corresponding database in the local environment (and press 'Okay') or\n"
-                                      "cancel the import (press 'Cancel'). (Warning: For large files this process may take a long time)")
+        self.label = QtWidgets.QLabel("The following database(s) in the scenario file cannot be found in your project.\n\n"
+                                      "Please indicate the corresponding database(s), or cancel the import if this is not"
+                                      " possible. (Warning: this process may take a few minutes for large scenario files)")
 
         self.label_choices = []
         self.grid_box = QtWidgets.QGroupBox("Databases:")

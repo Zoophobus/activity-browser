@@ -8,7 +8,7 @@ class Application(object):
     CURRENT_PATH = os.path.dirname(__file__)
     CSS_STYLE = os.path.join(CURRENT_PATH, 'static', 'css', 'main.css')
     def __init__(self):
-        self.main_window = MainWindow()
+        self.main_window = MainWindow(self)
 
         # Instantiate all the controllers.
         # -> Ensure all controller instances have access to the MainWindow
@@ -23,6 +23,7 @@ class Application(object):
         self.main_window.showMaximized()
 
     def close(self):
+        self.plugin_controller.close_plugins()
         self.main_window.close()
 
     def deleteLater(self):

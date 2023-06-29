@@ -15,7 +15,8 @@ from ...bwutils.superstructure import (
     ABFileImporter, scenario_replace_databases
 )
 from ...settings import ab_settings
-from ...bwutils.errors import CriticalScenarioExtensionError
+from ...bwutils.errors import (CriticalScenarioExtensionError, UnlinkableScenarioExchangeError,
+                               UnlinkableScenarioDatabaseError, ImportCanceledError)
 from ...signals import signals
 from ...ui.icons import qicons
 from ...ui.style import horizontal_line, header, style_group_box
@@ -282,9 +283,13 @@ class ScenarioImportPanel(BaseRightTab):
         
         <br> <p> You can also work with <b>multiple scenario files</b> for which there are with two options:</p>
         <p>1. <b>Combine scenarios</b>: this yields all possible scenario combinations 
-        (e.g. file 1: <i>S1, S2</i> and file 2: <i>A, B</i> yields <i>S1-A, S1-B, S2-A, S2-B</i>)</p>
+        (e.g. file 1: <i>S1, S2</i> and file 2: <i>A, B</i> yields <i>S1-A, S1-B, S2-A, S2-B</i>) 
+        Click <a href="https://github.com/LCA-ActivityBrowser/activity-browser/blob/master/resources/sdf_product_combination.png"> here </a>
+        for an example</p>
         <p>2. <b>Extend scenarios</b>: scenarios from file 2 extend scenarios of file 1 
-        (only possible if scenario names are identical in all files, e.g. everywhere <i>S1, S2</i>).</p> 
+        (only possible if scenario names are identical in all files, e.g. everywhere <i>S1, S2</i>).
+        Click <a href="https://github.com/LCA-ActivityBrowser/activity-browser/blob/master/resources/sdf_addtion_combinations.png"> here
+        </a> for an example</p> 
         """
 
         self.tables = []
@@ -347,7 +352,7 @@ class ScenarioImportPanel(BaseRightTab):
             return []
         return scenario_names_from_df(self.tables[idx])
 
-    def combined_dataframe(self) -> pd.DataFrame:
+    def combined_dataframe(self, skip_checks: bool = False) -> pd.DataFrame:
         """Return a dataframe that combines the scenarios of multiple tables.
         """
         if not self.tables:
@@ -364,7 +369,7 @@ class ScenarioImportPanel(BaseRightTab):
             kind = "addition"
         else:
             kind = "none"
-        self._scenario_dataframe = manager.combined_data(kind, ABFileImporter.check_duplicates)
+        self._scenario_dataframe = manager.combined_data(kind, skip_checks)
 
     @Slot(name="addTable")
     def add_table(self) -> None:
@@ -373,7 +378,7 @@ class ScenarioImportPanel(BaseRightTab):
         self.tables.append(widget)
         self.scenario_tables.addWidget(widget)
         self.updateGeometry()
-        self.combined_dataframe()
+        self.combined_dataframe(skip_checks=True)
 
     @Slot(int, name="removeTable")
     def remove_table(self, idx: int) -> None:
@@ -386,7 +391,7 @@ class ScenarioImportPanel(BaseRightTab):
         # Do not forget to update indexes!
         for i, w in enumerate(self.tables):
             w.index = i
-        self.combined_dataframe()
+        self.combined_dataframe(skip_checks=True)
 
     @Slot(name="clearTables")
     def clear_tables(self) -> None:
@@ -508,7 +513,6 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                     df = ABCSVImporter.read_file(path, separator=separator)
                 # Read in the file as a scenario flow table if the file is arranged as one
                 if len(df.columns.intersection(SUPERSTRUCTURE)) >= 12:
-                    df = ABFileImporter.check_duplicates(df)
                     if df is None:
                         QtWidgets.QApplication.restoreOverrideCursor()
                         return
@@ -533,14 +537,31 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                 # Triggered when combining different scenario files by extension leads to no scenario columns
                 QtWidgets.QApplication.restoreOverrideCursor()
                 return
+            except UnlinkableScenarioDatabaseError as e:
+                QtWidgets.QApplication.restoreOverrideCursor()
+                return
+            except UnlinkableScenarioExchangeError as e:
+                QtWidgets.QApplication.restoreOverrideCursor()
+                return
+            except ImportCanceledError as e:
+                QtWidgets.QApplication.restoreOverrideCursor()
+                return
             self.scenario_name.setText(path.name)
             self.scenario_name.setToolTip(path.name)
             self._parent.save_button(True)
             QtWidgets.QApplication.restoreOverrideCursor()
 
     def sync_superstructure(self, df: pd.DataFrame) -> None:
+        """synchronizes the contents of either a single, or multiple scenario files to create a single scenario
+        dataframe"""
         # TODO: Move the 'scenario_df' into the model itself.
+        QtWidgets.QApplication.restoreOverrideCursor()
         df = self.scenario_db_check(df)
+        QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+        df = SuperstructureManager.fill_empty_process_keys_in_exchanges(df)
+        SuperstructureManager.verify_scenario_process_keys(df)
+        df = SuperstructureManager.check_duplicates(df)
+        # TODO add the key checks here and field checks here.
         # If we've cancelled the import then we don't want to load the dataframe
         if df.empty:
             return
@@ -559,10 +580,11 @@ class ScenarioImportWidget(QtWidgets.QWidget):
             relink.append((db, db_lst))
         # check for databases in the scenario dataframe that cannot be linked to
         if unlinkable:
-            dialog = ScenarioDatabaseDialog.construct_dialog(self._parent.window, relink)
+            dialog = ScenarioDatabaseDialog.construct_dialog(self._parent, relink)
             if dialog.exec_() == dialog.Accepted:
+
                 # TODO On update to bw2.5 this should be changed to use the bw2data.utils.get_node method
-                return scenario_replace_databases(df, dialog.relink)
+                return scenario_replace_databases(self._parent, df, dialog.relink)
                 # generate the required dialog
         return df
 

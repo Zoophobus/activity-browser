@@ -94,12 +94,43 @@ class Plot(QtWidgets.QWidget):
             self.figure.savefig(filepath)
 
 
+class LCAResultsBarChart(Plot):
+    """" Generate a bar chart comparing the absolute LCA scores of the products """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.plot_name = 'LCA scores'
+
+    def plot(self, df: pd.DataFrame, method: tuple, labels: list, **kwargs):
+        self.reset_plot()
+        height_inches, width_inches = self.get_canvas_size_in_inches()
+        self.figure.set_size_inches(height_inches, width_inches)
+
+        # https://github.com/LCA-ActivityBrowser/activity-browser/issues/489
+        df.index = pd.Index(labels)  # Replace index of tuples
+        show_legend = df.shape[1] != 1  # Do not show the legend for 1 column
+        df.plot.barh(ax=self.ax, legend=show_legend)
+        self.ax.invert_yaxis()
+
+        # labels
+        self.ax.set_yticks(np.arange(len(labels)))
+        self.ax.set_xlabel(bw.methods[method].get('unit'))
+        self.ax.set_title(', '.join([m for m in method]))
+        # self.ax.set_yticklabels(labels, minor=False)
+
+        # grid
+        self.ax.grid(which="major", axis="x", color="grey", linestyle='dashed')
+        self.ax.set_axisbelow(True)  # puts gridlines behind bars
+
+        # draw
+        self.canvas.draw()
+
+
 class LCAResultsPlot(Plot):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.plot_name = 'LCA heatmap'
 
-    def plot(self, df: pd.DataFrame):
+    def plot(self, df: pd.DataFrame, **kwargs):
         """ Plot a heatmap grid of the different impact categories and reference flows. """
         # need to clear the figure and add axis again
         # because of the colorbar which does not get removed by the ax.clear()
@@ -178,6 +209,30 @@ class CorrelationPlot(Plot):
         # refresh canvas
         size_pixels = self.figure.get_size_inches() * self.figure.dpi
         self.setMinimumHeight(size_pixels[1])
+        self.canvas.draw()
+
+
+class MonteCarloPlot(Plot):
+    """ Monte Carlo plot."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.plot_name = 'Monte Carlo'
+
+    def plot(self, df: pd.DataFrame, method: tuple):
+        self.ax.clear()
+
+        for col, lbl in enumerate(df.columns):
+            color = self.ax._get_lines.get_next_color()
+            df.iloc[:, col].hist(ax=self.ax, figure=self.figure, label=lbl, density=True, color=color, alpha=0.5)  # , histtype="step")
+            # self.ax.axvline(df[col].median(), color=color)
+            self.ax.axvline(df.iloc[:, col].mean(), color=color)
+
+        self.ax.set_xlabel(bw.methods[method]["unit"])
+        self.ax.set_ylabel('Probability')
+        self.ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07), ) #ncol=2
+
+        # lconfi, upconfi =mc['statistics']['interval'][0], mc['statistics']['interval'][1]
+
         self.canvas.draw()
 
 

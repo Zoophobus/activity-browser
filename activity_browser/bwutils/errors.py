@@ -39,6 +39,12 @@ class ExchangeErrorValues(ABError):
     pass
 
 
+class ScenarioExchangeError(ABError):
+    """In the AB we require the exchanges from the scenario file to be mappable to the databases. If this is not the
+        case we MUST throw an error."""
+    pass
+
+
 class ReferenceFlowValueError(ABWarning):
     """While a user can technically perform a calculation with the reference flows all set to 0, such a calculation
      makes no logical sense and will lead to downstream errors (due to 0 results)."""
@@ -58,3 +64,14 @@ class CriticalCalculationError(ABError):
 class CriticalScenarioExtensionError(ABError):
     """Should be raised when combinging multiple scenario files by extension leads to zero scenario columns. Due to no
     scenario columns being found in common between the scenario files."""
+
+
+class UnlinkableScenarioDatabaseError(ABError):
+    """Should be raised when looking up one of the processes in an SDF file and the values used don't match those
+    present in the local AB/BW databases."""
+
+
+class UnlinkableScenarioExchangeError(ABError):
+    """Should be raised when looking up a process key from the metadata in a scenario difference file, if THAT process
+    key cannot be located in the local databases."""
+

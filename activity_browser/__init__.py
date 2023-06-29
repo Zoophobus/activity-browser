@@ -10,6 +10,7 @@ import chromedriver_binary  # required to add chrome driver path in environment 
 
 from .application import Application
 from .info import __version__
+from .plugin import Plugin
 
 # https://bugreports.qt.io/browse/QTBUG-87014
 # https://bugreports.qt.io/browse/QTBUG-85546

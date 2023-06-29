@@ -98,6 +98,8 @@ class Signals(QObject):
     # LCA Results
     lca_calculation = Signal(dict)
     lca_results_tabs_changed = Signal()
+    lca_results_filter = Signal(int, str)
+    update_lca_results = Signal()
 
     # Impact Categories & Characterization Factors
     new_method = Signal(tuple)
@@ -124,5 +126,9 @@ class Signals(QObject):
     # Metadata
     metadata_changed = Signal(tuple)  # key
 
+    # Plugins
+    plugin_selected = Signal(str)
+    plugin_deselected = Signal(str)
+    manage_plugins = Signal()
 
 signals = Signals()
