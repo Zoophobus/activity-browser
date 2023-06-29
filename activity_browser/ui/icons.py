@@ -55,6 +55,7 @@ class Icons(object):
     filter = create_path('main', 'filter.png')
     filter_outline = create_path('main', 'filter_outline.png')
 
+
     # database
     import_db = create_path('main', 'import_database.png')
     duplicate_database = create_path('main', 'duplicate_database.png')
@@ -72,10 +73,14 @@ class Icons(object):
     welcome = create_path('main', 'welcome.png')
     main_window = create_path('main', 'home.png')
 
+    # plugins
+    plugin = create_path('main', 'plugin.png')
+
     # other
     superstructure = create_path('main', 'superstructure.png')
     copy_to_clipboard = create_path('main', 'copy_to_clipboard.png')
-
+    warning = create_path('context', 'warning.png')
+    critical = create_path('context', 'critical.png')
 
 class QIcons(Icons):
     """ Using the Icons class, returns the same attributes, but as QIcon type

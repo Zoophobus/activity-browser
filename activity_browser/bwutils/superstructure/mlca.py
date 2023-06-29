@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import Iterable, Optional
-from PySide2 import QtCore
-from PySide2.QtWidgets import QMessageBox
+from PySide2.QtWidgets import QPushButton
 
 from bw2calc.matrices import TechnosphereBiosphereMatrixBuilder as MB
 import numpy as np
@@ -11,12 +10,12 @@ from ...signals import signals
 from ..commontasks import format_activity_label
 from ..multilca import MLCA, Contributions
 from ..utils import Index
-from ..errors import CriticalCalculationError
+from ..errors import UnlinkableScenarioExchangeError
 from .dataframe import (
     scenario_names_from_df, arrays_from_indexed_superstructure,
     filter_databases_indexed_superstructure
 )
-from .file_imports import ABPopup
+from .file_dialogs import ABPopup
 
 class SuperstructureMLCA(MLCA):
     """Subclass of the `MLCA` class which adds another dimension in the form
@@ -45,6 +44,7 @@ class SuperstructureMLCA(MLCA):
         # the 'input' keys are matched to the product_dict or
         # biosphere_dict ('rows') while the 'output' keys are matched
         # to the activity_dict ('cols').
+
 
         # Side-note on presamples: Presamples was used in AB for calculating scenarios,
         # presamples was superseded by this implementation. For more reading:
@@ -110,14 +110,17 @@ class SuperstructureMLCA(MLCA):
             try:
                 self.matrix_indices[i] = convert(index)
             except (ValueError, KeyError) as e:
-                critical = ABPopup()
+                # This is to be used as a fail safe for the case where we don't catch a bad exchange during the import
+                # process, or if something else causes an issue with the exchange
                 msg = f"One of the activities in the exchange between ({index.input.database}, {index.input.code}) and ({index.output.database}, {index.output.code}) from the scenario file is not present within the designated database. Please check both keys for this exchange within your scenario file with the corresponding databases."
-                critical.abCritical("Scenario Key Error", msg, QMessageBox.Cancel)
-                raise CriticalCalculationError
+                critical = ABPopup.abCritical("Scenario Key Error", msg, QPushButton('Cancel'))
+                critical.exec_()
+                raise UnlinkableScenarioExchangeError
+            except Exception as e:
+                continue
 
     def update_matrices(self) -> None:
         """A Simplified version of the `PackagesDataLoader.update_matrices` method.
-
         In this case, we expect to only replace technosphere and biosphere
         values, leaving out characterization factor values.
         """
@@ -246,12 +249,13 @@ class SuperstructureMLCA(MLCA):
                 df.loc[:, idx] = self.lca_scores[:, x, y]
         return df
 
-    @QtCore.Slot(int, str, name="filterResults")
-    def filter_results(self, key: int, group: str):
-        if group == 'Scenarios':
-            self.scenario_dataframe.loc[str(key), 'filter'] = not self.scenario_dataframe.loc[str(key), 'filter']
-        super().filter_results(key, group)
-
+# TODO check for whether this is required
+#    @QtCore.Slot(int, str, name="filterResults")
+#    def filter_results(self, key: int, group: str):
+#        if group == 'Scenarios':
+#            self.scenario_dataframe.loc[str(key), 'filter'] = not self.scenario_dataframe.loc[str(key), 'filter']
+#        super().filter_results(key, group)
+#
 
 class SuperstructureContributions(Contributions):
     mlca: SuperstructureMLCA

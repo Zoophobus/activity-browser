@@ -550,8 +550,11 @@ class Contributions(object):
         special_keys = [('Total', ''), ('Rest', '')]
 
         # replace all 0 values with NaN and drop all rows with only NaNs
-        df = df.replace(0, np.nan)#.dropna(how='all')
+        # EXCEPT for the special keys
+        index = df.loc[df.index.difference(special_keys)].replace(0, np.nan).dropna(how='all').index.union(special_keys)
+        df = df.loc[index]
 
+        joined = None
         if not mask:
             joined = self.join_df_with_metadata(
                 df, x_fields=x_fields, y_fields=y_fields,
@@ -566,8 +569,9 @@ class Contributions(object):
             df = df.reindex(combined_keys, axis="index", fill_value=0.0)
             df.index = self.get_labels(df.index, mask=mask)
             joined = df
-
-        return joined.reset_index(drop=False)
+        if joined is not None:
+            return joined.reset_index(drop=False)
+        return
 
     def adjust_table_unit(self, df: pd.DataFrame, method: Optional[tuple]) -> pd.DataFrame:
         """Given a dataframe, adjust the unit of the table to either match the
