@@ -13,8 +13,7 @@ from PySide2.QtWidgets import (
     QWidget, QTabWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QRadioButton,
     QLabel, QLineEdit, QCheckBox, QPushButton, QComboBox, QTableView,
     QButtonGroup, QMessageBox, QGroupBox, QGridLayout, QFileDialog,
-    QButtonGroup, QMessageBox, QGroupBox, QGridLayout, QFileDialog,
-    QApplication, QSizePolicy, QToolBar
+    QApplication, QSizePolicy, QToolBar, QSplitter,
 )
 from PySide2 import QtGui, QtCore
 from stats_arrays.errors import InvalidParamsError
@@ -399,7 +398,22 @@ class ResultSetupTab(QWidget):
         super().__init__(parent)
         self.parent = parent
         self.reference_flow_table = FilterReferencesTable(self)
+        self.reference_widget = QWidget()
+        reference_layout = QVBoxLayout()
+        reference_layout.addWidget(header("Reference Flows:"))
+        reference_layout.addWidget(self.reference_flow_table)
+        self.reference_widget.setLayout(reference_layout)
+
         self.impact_category_table = FilterMethodsTable(self)
+        self.impact_widget = QWidget()
+        impact_layout = QVBoxLayout()
+        impact_layout.addWidget(header("Impact Categories:"))
+        impact_layout.addWidget(self.impact_category_table)
+        self.impact_widget.setLayout(impact_layout)
+
+        self.splitter = QSplitter(QtCore.Qt.Vertical)
+        self.splitter.addWidget(self.reference_widget)
+        self.splitter.addWidget(self.impact_widget)
         self.scenario_table = None
         self.filter_button = QPushButton("Update")
         button_box = QHBoxLayout()
@@ -408,19 +422,18 @@ class ResultSetupTab(QWidget):
         self.layout = QVBoxLayout()
         self.layout.addLayout(button_box)
 #        self.layout.addStretch(1)
-        self.layout.addWidget(header("Reference Flows:"))
-        self.layout.addWidget(self.reference_flow_table)
 #        self.layout.addStretch(1)
-        self.layout.addWidget(header("Impact Categories:"))
-        self.layout.addWidget(self.impact_category_table)
 
         if self.parent.has_scenarios:
+            self.scenario_widget = QWidget()
+            scenario_layout = QVBoxLayout()
             self.scenario_table = FilterScenariosTable(self)
-            self.layout.addWidget(header("Scenarios:"))
-            self.layout.addWidget(self.scenario_table)
-            self.layout.addStretch(1)
-        else:
-            self.layout.addStretch(1)
+            scenario_layout.addWidget(header("Scenarios:"))
+            scenario_layout.addWidget(self.scenario_table)
+            self.scenario_widget.setLayout(scenario_layout)
+            self.splitter.addWidget(self.scenario_widget)
+        self.layout.addWidget(self.splitter)
+        self.layout.addStretch(1)
 
         self.setLayout(self.layout)
         self.filter_button.clicked.connect(self.show_selected_lca_results)
