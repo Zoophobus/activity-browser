@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from PySide2.QtCore import QObject, Signal
+from PySide2.QtCore import QObject, Signal, QModelIndex
 
 
 class Signals(QObject):
@@ -100,13 +100,18 @@ class Signals(QObject):
     lca_results_tabs_changed = Signal()
 
     # Impact Categories & Characterization Factors
-    new_method = Signal(tuple)
-    copy_method = Signal(tuple)
+    new_method = Signal()
+    method_deleted = Signal()
+    copy_method = Signal(tuple, str)
+    delete_method = Signal(tuple, str)
     edit_method_cf = Signal(tuple, tuple)
     remove_cf_uncertainties = Signal(list, tuple)
     method_modified = Signal(tuple)
     method_selected = Signal(tuple)
     method_tabs_changed = Signal()
+    set_uncertainty = Signal(tuple)
+    add_cf_method = Signal(tuple, tuple)
+    delete_cf_method = Signal(tuple, tuple)
 
     # Monte Carlo LCA
     monte_carlo_finished = Signal()
@@ -114,6 +119,7 @@ class Signals(QObject):
     # Qt Windows
     update_windows = Signal()
     new_statusbar_message = Signal(str)
+    restore_cursor = Signal()
 
     # Tabs
     toggle_show_or_hide_tab = Signal(str)
@@ -125,7 +131,7 @@ class Signals(QObject):
     metadata_changed = Signal(tuple)  # key
 
     # Plugins
-    plugin_selected = Signal(str)
+    plugin_selected = Signal(str, bool)
     plugin_deselected = Signal(str)
     manage_plugins = Signal()
 
