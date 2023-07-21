@@ -10,7 +10,6 @@ from ..panels import ABTab
 from ...signals import signals
 from ...bwutils.errors import ABError
 
-
 class LCAResultsTab(ABTab):
     """Tab that contains subtabs for each calculation setup."""
     def __init__(self, parent):
@@ -59,7 +58,7 @@ class LCAResultsTab(ABTab):
             self.addTab(new_tab, name)
             self.select_tab(self.tabs[name])
             signals.show_tab.emit("LCA results")
-        except BW2CalcError as e:
+        except (BW2CalcError, ABError) as e:
             initial, *other = e.args
             print(traceback.format_exc())
             msg = QMessageBox(
