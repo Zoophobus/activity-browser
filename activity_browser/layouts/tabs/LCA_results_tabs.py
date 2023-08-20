@@ -38,6 +38,13 @@ from ...ui.web import SankeyNavigatorWidget
 from .base import BaseRightTab
 from ...logger import Logger, ABLogHandler
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
+
 def get_header_layout(header_text: str) -> QVBoxLayout:
     vlayout = QVBoxLayout()
     vlayout.addWidget(header(header_text))
@@ -1210,8 +1217,8 @@ class MonteCarloTab(NewAnalysisTab):
             log.info('SEED: ', self.seed.text())
             try:
                 seed = int(self.seed.text())
-            except ValueError:
-                log.error(traceback.print_exc())
+            except ValueError as e:
+                log.error('Seed value must be an integer number or left empty.', error=e)
                 QMessageBox.warning(self, 'Warning', 'Seed value must be an integer number or left empty.')
                 self.seed.setText('')
                 return
@@ -1229,7 +1236,7 @@ class MonteCarloTab(NewAnalysisTab):
             self.update_mc()
         except InvalidParamsError as e:  # This can occur if uncertainty data is missing or otherwise broken
             # print(e)
-            log.error(traceback.print_exc())
+            log.error(error=e)
             QMessageBox.warning(self, 'Could not perform Monte Carlo simulation', str(e))
         QApplication.restoreOverrideCursor()
 
@@ -1479,7 +1486,7 @@ class GSATab(NewAnalysisTab):
                                  cutoff_technosphere=cutoff_technosphere, cutoff_biosphere=cutoff_biosphere)
             # self.update_mc()
         except Exception as e:  # Catch any error...
-            log.error(traceback.print_exc())
+            log.error(error=e)
             message = str(e)
             message_addition = ''
             if message == 'singular matrix':
@@ -1546,21 +1553,17 @@ class MonteCarloWorkerThread(QtCore.QThread):
     So this is for future reference in case this issue is solved... """
 
     def __init__(self):
-        # for managing the logs for thread safety
-        self.log = logging.getLogger("MC_worker")
-        self.handler = ABLogHandler()
-        self.handler.setFormatter(logging.Formatter("%(module)s - %(levelname)s - %(asctime)s - %(message)s"))
-        self.log.addHandler(self.handler)
+        pass
 
     def set_mc(self, mc, iterations=20):
         self.mc = mc
         self.iterations = iterations
 
     def run(self):
-        self.log.info('Starting new Worker Thread. Iterations:', self.iterations)
+        log.info('Starting new Worker Thread. Iterations:', self.iterations)
         self.mc.calculate(iterations=self.iterations)
         # res = bw.GraphTraversal().calculate(self.demand, self.method, self.cutoff, self.max_calc)
-        self.log.info('in thread {}'.format(QtCore.QThread.currentThread()))
+        log.info('in thread {}'.format(QtCore.QThread.currentThread()))
         signals.monte_carlo_ready.emit(self.mc.cs_name)
 
 

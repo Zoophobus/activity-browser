@@ -15,6 +15,12 @@ from ...bwutils.superstructure.graph_traversal_with_scenario import GraphTravers
 from ...signals import signals
 from ...logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 
 # TODO:
 # switch between percent and absolute values

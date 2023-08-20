@@ -14,7 +14,13 @@ from activity_browser.bwutils import commontasks as bc, uncertainty as uc
 from activity_browser.signals import signals
 from activity_browser.ui.wizards import UncertaintyWizard
 from .base import BaseTreeModel, EditablePandasModel, TreeItem
-from ....logger import log
+
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 
 class BaseParameterModel(EditablePandasModel):
     COLUMNS = []
@@ -354,7 +360,7 @@ class ParameterItem(TreeItem):
                 parent.appendChild(item)
             except DoesNotExist as e:
                 # The exchange is coming from a deleted database, remove it
-                log.info("Broken exchange: {}, removing.".format(e))
+                log.warning("Broken exchange: {}, removing.".format(e))
                 signals.exchanges_deleted.emit([exc])
 
 

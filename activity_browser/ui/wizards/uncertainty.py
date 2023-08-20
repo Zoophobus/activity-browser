@@ -12,6 +12,12 @@ from ...bwutils.uncertainty import EMPTY_UNCERTAINTY
 from ...signals import signals
 from ...logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger)
+
 
 class UncertaintyWizard(QtWidgets.QWizard):
     """Using this wizard, guide the user through selecting an 'uncertainty'
@@ -363,7 +369,7 @@ class UncertaintyTypePage(QtWidgets.QWizardPage):
         self.special_distribution_handling()
         self.generate_plot()
 
-    def completed_active_fields(self) -> tuple:
+    def completed_active_fields(self) -> bool:
         """Returns a boolean value based on the distribution id.
         If the distribution contains an average, minimum and maximum this forces the
         average to exist exclusively within these bounds"""
@@ -375,10 +381,11 @@ class UncertaintyTypePage(QtWidgets.QWizardPage):
         elif self.dist.id in {4, 7}:
             completed = all([field.hasAcceptableInput() and field.text() for field in (self.minimum, self.maximum)])
         elif self.dist.id in {5, 6}:
-            completed = all([field.hasAcceptableInput() and field.text() for field in (self.minimum, self.maximum, self.loc)])\
-            and (float(self.minimum.text()) < float(self.loc.text()) < float(self.maximum.text()))
+            completed = all([field.hasAcceptableInput() and field.text() for field in (self.minimum, self.maximum,
+                    self.loc)]) and (float(self.minimum.text()) < float(self.loc.text()) < float(self.maximum.text()))
         elif self.dist.id in {8, 9, 10, 11, 12}:
-            completed = all([field.hasAcceptableInput() and field.text() for field in (self.scale, self.shape, self.loc)])
+            completed = all([field.hasAcceptableInput() and field.text() for field in (self.scale, self.shape,
+                                                                                               self.loc)])
         return completed
 
     @Slot(name="locToMean")

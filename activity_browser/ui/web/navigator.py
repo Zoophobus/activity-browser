@@ -15,6 +15,12 @@ from ...signals import signals
 from ...bwutils.commontasks import identify_activity_type
 from ...logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 # TODO:
 # save graph as image
 # zoom reverse direction between canvas and minimap

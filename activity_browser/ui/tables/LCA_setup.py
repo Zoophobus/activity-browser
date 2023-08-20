@@ -11,6 +11,11 @@ from .models import CSMethodsModel, CSActivityModel, ScenarioImportModel
 from .views import ABDataFrameView
 from ...logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
 
 class CSList(QtWidgets.QComboBox):
     def __init__(self, parent=None):
@@ -152,6 +157,7 @@ class CSMethodsTable(CSGenericTable):
         self.setToolTip("Drag impact categories from the impact categories tree/table to include them \n"
                         "Click and drag to re-order individual rows of the table\n"
                         "Hold CTRL and click to select multiple rows to open or delete them.")
+
 
     @Slot(name="resizeView")
     def custom_view_sizing(self):

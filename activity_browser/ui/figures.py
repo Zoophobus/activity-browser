@@ -14,6 +14,12 @@ from activity_browser.utils import savefilepath
 from ..bwutils.commontasks import wrap_text
 from ..logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 
 # todo: sizing of the figures needs to be improved and systematized...
 # todo: Bokeh is a potential alternative as it allows interactive visualizations,
@@ -274,7 +280,7 @@ class SimpleDistributionPlot(Plot):
         try:
             sns.histplot(data.T, kde=True, stat="density", ax=self.ax, edgecolor="none")
         except RuntimeError as e:
-            log.error("Runtime error: {}\nPlotting without KDE.".format(e))
+            log.error("{}: Plotting without KDE.".format(e))
             sns.histplot(data.T, kde=False, stat="density", ax=self.ax, edgecolor="none")
         self.ax.set_xlabel(label)
         self.ax.set_ylabel("Probability density")

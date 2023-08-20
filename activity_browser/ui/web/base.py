@@ -16,6 +16,12 @@ from ...ui.icons import qicons
 from ...signals import signals
 from ...logger import log
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 
 class BaseNavigatorWidget(QtWidgets.QWidget):
     HELP_TEXT = """

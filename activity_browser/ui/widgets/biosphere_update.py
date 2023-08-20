@@ -13,6 +13,12 @@ import logging
 from ...signals import signals
 from ...logger import Logger, ABLogHandler
 
+import logging
+from activity_browser.logger import ABHandler
+
+logger = logging.getLogger('ab_logs')
+log = ABHandler.setup_with_logger(logger, __name__)
+
 
 class BiosphereUpdater(QtWidgets.QProgressDialog):
     def __init__(self, parent=None):
@@ -70,5 +76,5 @@ class UpdateBiosphereThread(QtCore.QThread):
                 self.progress.emit(i)
                 patch()
         except ValidityError as e:
-            self.log.error("Could not patch biosphere: {}".format(str(e)))
+            log.error("Could not patch biosphere: {}".format(str(e)))
             self.exit(1)
