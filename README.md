@@ -96,6 +96,21 @@ conda remove --force bw2io
 conda install bw2io=0.8.7
 ```
 
+## The alternative 
+The conda and anaconda installation methods use the conda binary to resolve the package dependencies. They do this using the conda channels and third party channels (for example conda-forge). The conda binary is not the only available binary available for resolving the package dependencies, mamba is an incredibly popular alternative available for many users (commercial too).
+
+Mamba can be simply installed from their [website](https://mamba.readthedocs.io/en/latest/index.html) following the provided instructions. Once installed mamba needs initialization and can then be run in similar fashion to conda.
+
+### The very quick mamba way
+```bash
+mamba create -n ab -c conda-forge activity-browser
+mamba activate ab
+activity-browser
+```
+
+Currently the ability to manage the channels with config is not supported in mamba, so the "thorough" installation method of conda is not possible.
+
+
 #### Activity Browser is installed
 
 At this point the activity-browser and all of its dependencies will be installed in a new conda environment called `ab`. You can change the environment name `ab` to whatever suits you.
