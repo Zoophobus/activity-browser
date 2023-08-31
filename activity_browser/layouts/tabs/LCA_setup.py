@@ -17,7 +17,7 @@ from ...bwutils.superstructure import (
 from ...settings import ab_settings
 from ...bwutils.errors import (CriticalScenarioExtensionError, ScenarioExchangeNotFoundError,
                                ScenarioDatabaseNotFoundError, ImportCanceledError, ScenarioExchangeDataNotFoundError,
-                               UnalignableScenarioColumnsWarning,)
+                               UnalignableScenarioColumnsWarning, ScenarioExchangeDataNonNumericError)
 from ...signals import signals
 from ...ui.icons import qicons
 from ...ui.style import horizontal_line, header, style_group_box
@@ -26,6 +26,7 @@ from ...ui.tables import (
 )
 from ...ui.widgets import ExcelReadDialog, ScenarioDatabaseDialog
 from .base import BaseRightTab
+from activity_browser.bwutils.superstructure import ABPopup, edit_superstructure_for_string
 
 import logging
 from activity_browser.logger import ABHandler
@@ -542,6 +543,19 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                         if query == QtWidgets.QMessageBox.No:
                             include_default = False
                     signals.parameter_scenario_sync.emit(self.index, df, include_default)
+                else:
+                    # this is a wrong file type
+                    QtWidgets.QApplication.restoreOverrideCursor()
+                    msg = "The Activity-Browser is attempting to import a scenario file.<p>During the attempted import"\
+                        " another file type was detected. Please check the file type of the attempted import, if it is"\
+                        " a scenario file make sure it contains a valid format.</p>"\
+                        "<p>A flow exchange scenario file requires the following headers:<br>" +\
+                          edit_superstructure_for_string(sep=", ", fhighlight='"') + "</p>"\
+                        "<p>A parameter scenario file requires the following:<br>" + edit_superstructure_for_string(
+                            ["name", "group"], sep=", ", fhighlight='"')
+                    critical = ABPopup.abCritical("Wrong file type", msg, QtWidgets.QPushButton("Cancel"))
+                    critical.exec_()
+                    return
             except CriticalScenarioExtensionError as e:
                 # Triggered when combining different scenario files by extension leads to no scenario columns
                 QtWidgets.QApplication.restoreOverrideCursor()
@@ -550,6 +564,9 @@ class ScenarioImportWidget(QtWidgets.QWidget):
                 QtWidgets.QApplication.restoreOverrideCursor()
                 return
             except ScenarioExchangeNotFoundError as e:
+                QtWidgets.QApplication.restoreOverrideCursor()
+                return
+            except ScenarioExchangeDataNonNumericError as e:
                 QtWidgets.QApplication.restoreOverrideCursor()
                 return
             except ImportCanceledError as e:
@@ -570,14 +587,12 @@ class ScenarioImportWidget(QtWidgets.QWidget):
     def sync_superstructure(self, df: pd.DataFrame) -> None:
         """synchronizes the contents of either a single, or multiple scenario files to create a single scenario
         dataframe"""
-        # TODO: Move the 'scenario_df' into the model itself.
         QtWidgets.QApplication.restoreOverrideCursor()
         df = self.scenario_db_check(df)
         QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
         df = SuperstructureManager.fill_empty_process_keys_in_exchanges(df)
         SuperstructureManager.verify_scenario_process_keys(df)
         df = SuperstructureManager.check_duplicates(df)
-        # TODO add the key checks here and field checks here.
         # If we've cancelled the import then we don't want to load the dataframe
         if df.empty:
             return
