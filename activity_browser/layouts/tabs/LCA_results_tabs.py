@@ -196,7 +196,7 @@ class LCAResultsSubTab(QTabWidget):
 class NewAnalysisTab(BaseRightTab):
     """Parent class around which all sub-tabs are built."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, skip_scenario_box: bool = False):
         super().__init__(parent)
         self.parent = parent
         self.has_scenarios = self.parent.has_scenarios
@@ -210,7 +210,8 @@ class NewAnalysisTab(BaseRightTab):
         self.export_plot: Optional[ExportPlot] = None
         self.export_table: Optional[ExportTable] = None
 
-        self.scenario_box = QComboBox()
+        if not skip_scenario_box:
+            self.scenario_box = QComboBox(self) # ADDED REFERENCE TO SELF TODO
         self.pt_layout = QVBoxLayout()
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -294,7 +295,7 @@ class NewAnalysisTab(BaseRightTab):
         """Determine if scenario Qt widgets are visible or not and retrieve
         scenario labels for the selection drop-down box.
         """
-        if self.scenario_box:
+        if self.scenario_box is not None:
             self.scenario_box.setVisible(self.has_scenarios)
             self.update_combobox(self.scenario_box, self.get_scenario_labels())
 
@@ -425,23 +426,68 @@ class ResultSetupTab(QWidget):
         self.layout = QVBoxLayout()
         self.layout.addLayout(button_box)
 #        self.layout.addStretch(1)
-        self.layout.addWidget(header("Reference Flows:"))
+        self.all_reference_flows_checkbox = QCheckBox("All")
+        self.all_reference_flows_checkbox.setChecked(True)
+        reference_header = QHBoxLayout()
+        reference_header.addWidget(header("Reference Flows:"))
+        reference_header.addWidget(self.all_reference_flows_checkbox)
+        reference_header.addStretch(1)
+        self.layout.addLayout(reference_header)
         self.layout.addWidget(self.reference_flow_table)
 #        self.layout.addStretch(1)
-        self.layout.addWidget(header("Impact Categories:"))
+        self.all_impact_categories_checkbox = QCheckBox("All")
+        impact_header = QHBoxLayout()
+        impact_header.addWidget(header("Impact Categories:"))
+        impact_header.addWidget(self.all_impact_categories_checkbox)
+        self.all_impact_categories_checkbox.setChecked(True)
+        impact_header.addStretch(1)
+        self.layout.addLayout(impact_header)
         self.layout.addWidget(self.impact_category_table)
 
         if self.parent.has_scenarios:
             self.scenario_table = FilterScenariosTable(self)
-            self.layout.addWidget(header("Scenarios:"))
+            self.all_scenarios_checkbox = QCheckBox("All")
+            scenario_header = QHBoxLayout()
+            scenario_header.addWidget(header("Scenarios:"))
+            scenario_header.addWidget(self.all_scenarios_checkbox)
+            self.all_scenarios_checkbox.setChecked(True)
+            scenario_header.addStretch(1)
+            self.layout.addLayout(scenario_header)
             self.layout.addWidget(self.scenario_table)
             self.layout.addStretch(1)
+            self.all_scenarios_checkbox.clicked.connect(self.check_scenarios)
         else:
             self.layout.addStretch(1)
 
         self.setLayout(self.layout)
-        self.filter_button.clicked.connect(lambda: signals.update_lca_results.emit())
+        self.filter_button.clicked.connect(self.check_results_filters)
+        self.all_impact_categories_checkbox.clicked.connect(self.check_impact_categories)
+        self.all_reference_flows_checkbox.clicked.connect(self.check_reference_flows)
+        self.connect()
 
+    def connect(self):
+        signals.all_reference_flows_checked.connect(self.all_reference_flows_checkbox.setChecked)
+        signals.all_impact_categories_checked.connect(self.all_impact_categories_checkbox.setChecked)
+        if self.parent.has_scenarios:
+            signals.all_scenarios_checked.connect(self.all_scenarios_checkbox.setChecked)
+
+    def check_results_filters(self):
+        if self.parent.mlca.methods_dataframe.loc[:,'filter'].any() and\
+            self.parent.mlca.reference_dataframe.loc[:, 'filter'].any() and\
+            ((not self.parent.has_scenarios) or self.parent.mlca.scenario_dataframe.loc[:, 'filter'].any()):
+            # if everything passes
+            signals.update_lca_results.emit()
+        else:
+            log.warning("Attempting to view results with no results selected.")
+
+    def check_scenarios(self, selected):
+        self.scenario_table.trigger(selected)
+
+    def check_impact_categories(self, selected):
+        self.impact_category_table.trigger(selected)
+
+    def check_reference_flows(self, selected):
+        self.reference_flow_table.trigger(selected)
 
 class InventoryTab(NewAnalysisTab):
     """Class for the 'Inventory' sub-tab.
@@ -461,7 +507,6 @@ class InventoryTab(NewAnalysisTab):
 
 
         self.layout.addLayout(get_header_layout('Inventory'))
-        self.bio_tech_button_group = QButtonGroup()
         self.bio_categorisation_factor_group = QComboBox()
         # buttons
         button_layout = QHBoxLayout()
@@ -494,6 +539,8 @@ class InventoryTab(NewAnalysisTab):
         self.categorisation_filter_layout = QVBoxLayout()
         self.categorisation_filter_layout.addWidget(QLabel("Filter flows:"))
         self.categorisation_filter_layout.addWidget(self.bio_categorisation_factor_group)
+
+
         self.categorisation_filter_box = QWidget()
         self.categorisation_filter_box.setLayout(self.categorisation_filter_layout)
         self.categorisation_filter_box.setVisible(True)
@@ -520,7 +567,6 @@ class InventoryTab(NewAnalysisTab):
     def connect_signals(self):
         self.radio_button_biosphere.toggled.connect(self.button_clicked)
         self.remove_zeros_checkbox.toggled.connect(self.remove_zeros_checked)
-        self.bio_tech_button_group.buttonClicked.connect(self.toggle_categorisation_factor_filter_buttons)
         self.bio_categorisation_factor_group.activated.connect(self.add_categorisation_factor_filter)
         if self.has_scenarios:
             self.scenario_box.currentIndexChanged.connect(self.update_scenario_data)
@@ -548,9 +594,8 @@ class InventoryTab(NewAnalysisTab):
         )
         self.old_categorisation_factor_state = self.categorisation_factor_state
 
-    @QtCore.Slot(QRadioButton, name="toggleCategorisationFactorFilterButtons")
-    def toggle_categorisation_factor_filter_buttons(self, bttn: QRadioButton):
-        if bttn.text() == "Biosphere flows":
+    def toggle_categorisation_factor_filter_buttons(self, biosphere: bool):
+        if biosphere:
             self.categorisation_filter_box.setVisible(True)
         else:
             self.categorisation_filter_box.setVisible(False)
@@ -567,8 +612,13 @@ class InventoryTab(NewAnalysisTab):
     def button_clicked(self, toggled: bool):
         """Update table according to radiobutton selected."""
         ext = "_Inventory" if toggled else "_Inventory_technosphere"
+        self.toggle_categorisation_factor_filter_buttons(toggled)
         self.table.table_name = "{}{}".format(self.parent.cs_name, ext)
-        self.update_table()
+        self.update_table(
+            reference_flows=self.parent.mlca.reference_dataframe[self.parent.mlca.reference_dataframe['filter']],
+            methods=self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']],
+            scenarios=self.parent.mlca.scenario_dataframe[self.parent.mlca.scenario_dataframe['filter']] if self.has_scenarios else None
+        )
 
     def configure_scenario(self):
         """Allow scenarios options to be visible when used."""
@@ -589,8 +639,12 @@ class InventoryTab(NewAnalysisTab):
         TODO Change the name start with df_...
         TODO
         """
-        incl_flows = {self.parent.contributions.inventory_data['biosphere'][1][k]
-                      for mthd in self.parent.mlca.method_matrices for k in mthd.indices}
+        incl_flows = set()
+        for idx in self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']].index:
+            incl_flows.update({self.parent.contributions.inventory_data['biosphere'][1][k] for k in self.parent.mlca.method_matrices[int(idx)].indices})
+        #incl_flows = {self.parent.contributions.inventory_data['biosphere'][1][k]
+        #              for mthd in self.parent.mlca.method_matrices[
+        #                  self.parent.mlca.methods_dataframe[self.parent.mlca.methods_dataframe['filter']].index] for k in mthd.indices}
         data = bios if bios is not None else self.df_biosphere
         if contributes:
             flows = incl_flows
@@ -738,10 +792,11 @@ class LCAScoresTab(NewAnalysisTab):
         super().__init__(parent)
         self.parent = parent
 
+        self.scenario_box.setVisible(False)
         self.scenario_box = None
         self.combobox_menu = QHBoxLayout()
         self.combobox_label = QLabel("Choose impact category:")
-        self.methodbox = QComboBox()
+        self.methodbox = QComboBox(self) # ADDED REFERENCE TO SELF TODO
         self.methodbox.scroll = False
         self.combobox_menu.addWidget(self.combobox_label)
         self.combobox_menu.addWidget(self.methodbox, 1)
@@ -832,6 +887,8 @@ class LCIAResultsTab(NewAnalysisTab):
         self.parent = parent
         self.df = None
         self.plot_inversion = False
+        self.scenario_box.setVisible(False)
+        self.scenario_box = None
 
         # if not self.parent.single_func_unit:
         self.plot = LCAResultsPlot(self.parent)

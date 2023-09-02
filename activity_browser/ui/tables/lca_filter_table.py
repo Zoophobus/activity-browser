@@ -43,6 +43,13 @@ class FilterReferencesTable(ABDataFrameView):
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Reference Flows")
 
+    def trigger(self, checked: bool):
+        for i in range(self.model.rowCount()):
+            if self.model.toggle(i, checked) == 1:
+                self.model.sync()
+                signals.lca_results_filter.emit(i, "Reference Flows")
+
+
 class FilterMethodsTable(ABDataFrameView):
     """
     Displays the name and a checkbox for the Methods in the LCA.
@@ -78,6 +85,12 @@ class FilterMethodsTable(ABDataFrameView):
                 self.model.toggle(idx)
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Impact Assessment Methods")
+
+    def trigger(self, checked: bool):
+        for i in range(self.model.rowCount()):
+            if self.model.toggle(i, checked) == 1:
+                self.model.sync()
+                signals.lca_results_filter.emit(i, "Impact Assessment Methods")
 
 
 class FilterScenariosTable(ABDataFrameView):
@@ -115,3 +128,9 @@ class FilterScenariosTable(ABDataFrameView):
                 self.model.toggle(idx)
                 self.model.sync()
                 signals.lca_results_filter.emit(idx, "Scenarios")
+
+    def trigger(self, checked: bool):
+        for i in range(self.model.rowCount()):
+            if self.model.toggle(i, checked) == 1:
+                self.model.sync()
+                signals.lca_results_filter.emit(i, "Scenarios")

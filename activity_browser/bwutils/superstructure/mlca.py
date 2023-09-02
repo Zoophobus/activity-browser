@@ -285,8 +285,9 @@ class SuperstructureContributions(Contributions):
     def _build_inventory(self, inventory: list, indices: dict, columns: list,
                          fields: list) -> pd.DataFrame:
 
+        scenario_index = self.mlca.scenario_dataframe[self.mlca.scenario_dataframe.loc[:, 'filter']].index
         inventory_ = [(next(iter(v.keys()))[0], next(iter(v.values()))) for v in inventory
-                     if next(iter(v.keys()))[1] == self.mlca.current]
+                     if next(iter(v.keys()))[1] == int(scenario_index[self.mlca.current])]
         return super()._build_inventory(inventory_, indices, columns, fields)
 
     def lca_scores_df(self, normalized: bool = False, **kwargs) -> pd.DataFrame:

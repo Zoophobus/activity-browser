@@ -103,6 +103,11 @@ class Signals(QObject):
     lca_results_tabs_changed = Signal()
     lca_results_filter = Signal(int, str)
     update_lca_results = Signal()
+    all_scenarios_checked = Signal(bool)
+    all_reference_flows_checked = Signal(bool)
+    all_impact_categories_checked = Signal(bool)
+
+
 
     # Impact Categories & Characterization Factors
     new_method = Signal()
